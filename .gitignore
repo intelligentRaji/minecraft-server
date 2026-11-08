@@ -1,0 +1,10 @@
+# Minecraft runtime server data and worlds
+data/
+
+# Logs and archives
+*.log
+*.log.gz
+*.tar.gz
+
+# Environment overrides
+.env
