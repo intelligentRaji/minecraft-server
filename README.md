@@ -49,13 +49,13 @@ Run the sync script to automatically distribute mods to the Docker server (`./da
 
 ```bash
 # Preview what will be synced
-./sync-mods.sh --dry-run
+python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --dry-run
 
 # Synchronize mods
-./sync-mods.sh
+python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py
 
 # Synchronize mods and automatically restart the server if server mods changed
-./sync-mods.sh --restart
+python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
 ```
 
 ---

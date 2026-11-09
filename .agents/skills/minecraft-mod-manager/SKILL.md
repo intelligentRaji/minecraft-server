@@ -38,10 +38,10 @@ Synchronize the new `.jar` files with both the Docker server (`./data/mods/`) an
 
 ```bash
 # Preview changes:
-./sync-mods.sh --dry-run
+python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --dry-run
 
 # Synchronize and restart server if server mods changed:
-./sync-mods.sh --restart
+python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
 ```
 
 ---
@@ -61,4 +61,4 @@ Confirm the server reports:
 
 ### Step 5: Troubleshooting Startup Errors
 1. **Missing Dependency Range:** Check logs for `Missing or unsupported mandatory dependencies: Mod ID: '<id>'`. Query and download the missing library using Steps 1–3.
-2. **Headless Crash:** If a `NoClassDefFoundError` or rendering error appears, ensure no client-side UI mods were placed into `server-client/` or `server-only/`. Move them to `client-only/` and re-run `./sync-mods.sh --restart`.
+2. **Headless Crash:** If a `NoClassDefFoundError` or rendering error appears, ensure no client-side UI mods were placed into `server-client/` or `server-only/`. Move them to `client-only/` and re-run `python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --restart`.
