@@ -59,6 +59,17 @@ Confirm the server reports:
 
 ---
 
-### Step 5: Troubleshooting Startup Errors
+### Step 5: Ask User to Upload to Google Drive (Final Step)
+Once the mods are installed, synced, and verified, ask the user:
+> *"Would you like me to upload the updated mods to your Google Drive (`minecraft-server/mods/`) for safe backup and sharing?"*
+
+Upon user approval, run:
+```bash
+python3 .agents/skills/minecraft-mod-manager/scripts/upload_to_gdrive.py
+```
+
+---
+
+### Step 6: Troubleshooting Startup Errors
 1. **Missing Dependency Range:** Check logs for `Missing or unsupported mandatory dependencies: Mod ID: '<id>'`. Query and download the missing library using Steps 1–3.
 2. **Headless Crash:** If a `NoClassDefFoundError` or rendering error appears, ensure no client-side UI mods were placed into `server-client/` or `server-only/`. Move them to `client-only/` and re-run `python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --restart`.
