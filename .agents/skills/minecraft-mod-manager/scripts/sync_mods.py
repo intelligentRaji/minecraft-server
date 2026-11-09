@@ -15,7 +15,14 @@ import argparse
 import subprocess
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+def find_repo_root() -> Path:
+    p = Path(__file__).resolve().parent
+    for parent in [p] + list(p.parents):
+        if (parent / ".git").exists() or (parent / "docker-compose.yml").exists():
+            return parent
+    return p.parents[3]
+
+REPO_ROOT = find_repo_root()
 MODPACK_DIR = REPO_ROOT / "modpack"
 SERVER_CLIENT_DIR = MODPACK_DIR / "server-client"
 SERVER_ONLY_DIR = MODPACK_DIR / "server-only"

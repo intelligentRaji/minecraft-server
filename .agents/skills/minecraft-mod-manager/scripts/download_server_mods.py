@@ -7,12 +7,19 @@ import json
 import urllib.request
 from pathlib import Path
 
-DEST_DIR = Path(__file__).resolve().parent.parent / "modpack" / "server-only"
+def find_repo_root() -> Path:
+    p = Path(__file__).resolve().parent
+    for parent in [p] + list(p.parents):
+        if (parent / ".git").exists() or (parent / "docker-compose.yml").exists():
+            return parent
+    return p.parents[3]
+
+REPO_ROOT = find_repo_root()
+DEST_DIR = REPO_ROOT / "modpack" / "server-only"
 DEST_DIR.mkdir(parents=True, exist_ok=True)
 
 MOD_SLUGS = [
     "chunky",
-    "spark",
     "ferrite-core",
     "modernfix",
     "simple-backups",
