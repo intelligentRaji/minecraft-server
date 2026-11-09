@@ -1,6 +1,9 @@
 # Minecraft runtime server data and worlds
 data/
 
+# Mod binaries
+*.jar
+
 # Logs and archives
 *.log
 *.log.gz
@@ -8,3 +11,4 @@ data/
 
 # Environment overrides
 .env
+

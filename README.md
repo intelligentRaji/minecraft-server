@@ -31,17 +31,32 @@ docker compose down
 
 ---
 
-## Adding Mods
+## Managing Mods
 
-1. Mod `.jar` files go into the `./data/mods/` directory.
-2. From Windows File Explorer, you can open:
-   ```text
-   \\wsl$\Ubuntu-24.04\home\wakaria\dev\minecraft-server\data\mods
-   ```
-3. After dropping mods, restart the container:
-   ```bash
-   docker compose restart mc
-   ```
+Mods are organized in the `modpack/` folder by target:
+
+```text
+minecraft-server/
+├── modpack/
+│   ├── both/          # Content mods required on BOTH server and client (e.g. Biomes O' Plenty, Twilight Forest)
+│   ├── server-only/   # Server-side mods (e.g. Spark, Chunky, admin tools)
+│   └── client-only/   # Client-side mods (e.g. Embeddium, Distant Horizons, Jade, JEI, Xaero's)
+```
+
+### Synchronize Mods
+
+Run the sync script to automatically distribute mods to the Docker server (`./data/mods/`) and your Windows Modrinth profile (`Forge 1.20.1`):
+
+```bash
+# Preview what will be synced
+./sync-mods.sh --dry-run
+
+# Synchronize mods
+./sync-mods.sh
+
+# Synchronize mods and automatically restart the server if server mods changed
+./sync-mods.sh --restart
+```
 
 ---
 
