@@ -29,8 +29,21 @@ SERVER_ONLY_DIR = MODPACK_DIR / "server-only"
 CLIENT_ONLY_DIR = MODPACK_DIR / "client-only"
 SERVER_MODS_DIR = REPO_ROOT / "data" / "mods"
 
-# Default Modrinth Windows profile path
-DEFAULT_CLIENT_MODS_DIR = Path("/mnt/c/Users/sergd/AppData/Roaming/ModrinthApp/profiles/Forge 1.20.1/mods")
+def detect_client_mods_dir() -> Path:
+    # 1. Environment variable override
+    if "MODRINTH_CLIENT_MODS" in os.environ:
+        return Path(os.environ["MODRINTH_CLIENT_MODS"])
+    # 2. Dynamic discovery in WSL Windows users
+    users_dir = Path("/mnt/c/Users")
+    if users_dir.exists():
+        for candidate in users_dir.glob("*/AppData/Roaming/ModrinthApp/profiles/Forge 1.20.1/mods"):
+            if candidate.is_dir():
+                return candidate
+    # 3. Fallback to default relative path
+    return Path.home() / ".minecraft" / "mods"
+
+
+DEFAULT_CLIENT_MODS_DIR = detect_client_mods_dir()
 
 
 def get_jars_in_dir(directory: Path) -> dict[str, Path]:

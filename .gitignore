@@ -1,5 +1,5 @@
-# Minecraft runtime server data and worlds
-data/
+# Root Minecraft runtime server data and worlds
+/data/
 
 # Mod binaries
 *.jar
