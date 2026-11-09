@@ -85,8 +85,39 @@ python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
 
 ---
 
-## Connecting from Minecraft (Windows)
-- In the Minecraft multiplayer server address, connect to:
-  ```text
-  localhost:25565
-  ```
+## Connecting to the Server
+- **Local (Host machine):** `localhost:25565`
+- **Friends (Playit tunnel):** Use your active playit.gg shareable domain (e.g. `xyz.gl.joinmc.link`).
+
+---
+
+## Server Commands (`CoreCommands`)
+
+Players and server operators have access to the following built-in commands:
+
+### Player Commands
+| Command | Description |
+| :--- | :--- |
+| `/home [name]` / `/sethome [name]` | Teleport to or set a named home |
+| `/delhome <name>` / `/homes` | Delete a home or view clickable list of homes |
+| `/warp [name]` / `/warps` | Teleport to a server warp or list all warps |
+| `/spawn` | Teleport to world spawn |
+| `/back` | Teleport back to your last location or death point |
+| `/rtp` | Randomly teleport to a safe location in the wild |
+| `/tpa <player>` / `/tpahere <player>` | Send teleport request to a player |
+| `/tpaccept` / `/tpdeny` / `/tpcancel` | Accept, deny, or cancel a teleport request |
+| `/msg <player>` / `/reply` | Send private whispers |
+| `/ping` / `/afk` / `/playtime` | Check latency, toggle AFK, or view total playtime |
+
+### Operator & Moderation Commands (OP Only)
+| Command | Description |
+| :--- | :--- |
+| `/setwarp <name>` / `/delwarp <name>` | Create or remove a public server warp |
+| `/setspawn` | Set world spawn to current location |
+| `/tempban <player> <time> [reason]` | Temporarily ban a player (e.g. `/tempban Steve 1d`) |
+| `/unban <player>` / `/checkban <player>` | Unban player or check active ban details |
+| `/mute <player>` / `/unmute <player>` | Mute or unmute a player in chat |
+| `/freeze <player>` | Freeze a player in place |
+| `/invsee <player>` | Inspect a player's inventory, armor, and off-hand |
+| `/fly` / `/god` / `/heal` / `/feed` | Toggle flight, invulnerability, or restore health/hunger |
+| `/region wand` / `/region create <name>` | Define and manage protected areas and flags |
