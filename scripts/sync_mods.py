@@ -3,9 +3,9 @@
 sync_mods.py - Synchronize Minecraft mods between modpack categories, Docker server, and Modrinth client.
 
 Categories:
-  modpack/both/        -> Copied to both Server (./data/mods) and Client (Modrinth profile)
-  modpack/server-only/ -> Copied only to Server (./data/mods)
-  modpack/client-only/ -> Copied only to Client (Modrinth profile)
+  modpack/server-client/ -> Copied to both Server (./data/mods) and Client (Modrinth profile)
+  modpack/server-only/   -> Copied only to Server (./data/mods)
+  modpack/client-only/   -> Copied only to Client (Modrinth profile)
 """
 
 import os
@@ -17,7 +17,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MODPACK_DIR = REPO_ROOT / "modpack"
-BOTH_DIR = MODPACK_DIR / "both"
+SERVER_CLIENT_DIR = MODPACK_DIR / "server-client"
 SERVER_ONLY_DIR = MODPACK_DIR / "server-only"
 CLIENT_ONLY_DIR = MODPACK_DIR / "client-only"
 SERVER_MODS_DIR = REPO_ROOT / "data" / "mods"
@@ -76,21 +76,21 @@ def main():
     parser.add_argument("--skip-client", action="store_true", help="Do not sync client mods")
     args = parser.parse_args()
 
-    # 1. Sync Server (both + server-only)
+    # 1. Sync Server (server-client + server-only)
     server_changed = sync_target(
         "Server",
         SERVER_MODS_DIR,
-        [BOTH_DIR, SERVER_ONLY_DIR],
+        [SERVER_CLIENT_DIR, SERVER_ONLY_DIR],
         dry_run=args.dry_run
     )
 
-    # 2. Sync Client (both + client-only)
+    # 2. Sync Client (server-client + client-only)
     if not args.skip_client:
         if args.client_path.exists():
             sync_target(
                 "Client (Modrinth)",
                 args.client_path,
-                [BOTH_DIR, CLIENT_ONLY_DIR],
+                [SERVER_CLIENT_DIR, CLIENT_ONLY_DIR],
                 dry_run=args.dry_run
             )
         else:

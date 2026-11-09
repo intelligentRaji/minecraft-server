@@ -38,7 +38,7 @@ Mods are organized in the `modpack/` folder by target:
 ```text
 minecraft-server/
 ├── modpack/
-│   ├── both/          # Content mods required on BOTH server and client (e.g. Biomes O' Plenty, Twilight Forest)
+│   ├── server-client/ # Content mods required on BOTH server and client (e.g. Biomes O' Plenty, Twilight Forest)
 │   ├── server-only/   # Server-side mods (e.g. Spark, Chunky, admin tools)
 │   └── client-only/   # Client-side mods (e.g. Embeddium, Distant Horizons, Jade, JEI, Xaero's)
 ```
