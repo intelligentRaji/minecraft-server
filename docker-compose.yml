@@ -21,3 +21,11 @@ services:
       - ./data:/data
     tty: true
     stdin_open: true
+
+  playit:
+    image: ghcr.io/playit-cloud/playit-agent:1.0
+    container_name: mc-playit-tunnel
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - SECRET_KEY=${PLAYIT_SECRET_KEY}
