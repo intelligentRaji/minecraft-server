@@ -13,18 +13,43 @@ This repository contains the Docker Compose setup for a modded Minecraft server 
 
 ## Quick Start
 
-### 1. Start the Server
+You can manage the server using `make` commands or direct `docker compose` commands.
+
+### Using Make Shortcuts
+
+| Command | Description |
+| :--- | :--- |
+| `make up` | Start server in background |
+| `make down` | Stop server |
+| `make restart` | Restart server container |
+| `make logs` | Follow server logs in real-time |
+| `make status` | View container status |
+| `make sync` | Sync mods to Docker + Modrinth client (restarts server if changed) |
+| `make sync-dry` | Preview mod synchronization without touching files |
+| `make backup` | Upload current modpack to Google Drive |
+| `make progress` | Display Chunky pre-generation progress (alias for `make chunky-progress`) |
+| `make chunky-start` | Start Chunky pre-generation task |
+| `make chunky-pause` | Pause Chunky pre-generation task and save progress |
+| `make chunky-continue` | Continue paused Chunky pre-generation task |
+| `make chunky-cancel` | Cancel and delete current Chunky task |
+| `make chunky-selection` | Display current Chunky shape and radius selection |
+
+---
+
+### Manual Docker Compose
+
+#### 1. Start the Server
 ```bash
 docker compose up -d
 ```
 
-### 2. Follow Logs (Server Startup)
+#### 2. Follow Logs (Server Startup)
 ```bash
 docker compose logs -f mc
 ```
 *(Wait until you see `[Server thread/INFO]: Done (...s)! For help, type "help"`)*
 
-### 3. Stop the Server
+#### 3. Stop the Server
 ```bash
 docker compose down
 ```
