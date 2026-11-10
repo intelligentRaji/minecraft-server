@@ -18,6 +18,7 @@ services:
       DIFFICULTY: "normal"
       MOTD: "A Modded Minecraft Server (Forge 1.20.1)"
       OPS: "Wakaria"
+      ONLINE_MODE: "false"
     volumes:
       - ./data:/data
     tty: true
