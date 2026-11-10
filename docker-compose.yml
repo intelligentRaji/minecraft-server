@@ -17,6 +17,7 @@ services:
       SIMULATION_DISTANCE: "8"
       DIFFICULTY: "normal"
       MOTD: "A Modded Minecraft Server (Forge 1.20.1)"
+      OPS: "Wakaria"
     volumes:
       - ./data:/data
     tty: true
