@@ -14,9 +14,9 @@ Step-by-step procedure for installing and configuring mods.
 ### Step 1: Discover & Inspect Mod Compatibility
 Query the mod on Modrinth for Forge 1.20.1 compatibility and inspect any required dependencies:
 ```bash
-python3 .agents/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug>
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug>
 ```
-*(For raw API specifications, see [references/modrinth_api.md](file:///home/wakaria/dev/minecraft-server/.agents/skills/minecraft-mod-manager/references/modrinth_api.md)).*
+*(For raw API specifications, see [references/modrinth_api.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/skills/minecraft-mod-manager/references/modrinth_api.md)).*
 
 ---
 
@@ -27,7 +27,7 @@ Download or place the `.jar` file directly into the appropriate folder inside `m
 * UI / HUD / Rendering $\rightarrow$ `modpack/client-only/`
 
 ```bash
-python3 .agents/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug> --download-to modpack/<category>
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug> --download-to modpack/<category>
 ```
 Repeat for any required dependencies reported in Step 1.
 
@@ -38,10 +38,10 @@ Synchronize the new `.jar` files with both the Docker server (`./data/mods/`) an
 
 ```bash
 # Preview changes:
-python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --dry-run
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --dry-run
 
 # Synchronize and restart server if server mods changed:
-python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
 ```
 
 ---
@@ -59,17 +59,20 @@ Confirm the server reports:
 
 ---
 
-### Step 5: Ask User to Upload to Google Drive (Final Step)
-Once the mods are installed, synced, and verified, ask the user:
-> *"Would you like me to upload the updated mods to your Google Drive (`minecraft-server/mods/`) for safe backup and sharing?"*
+### Step 5: Synchronize with Google Drive (Final Step)
+After any mod additions, upgrades, or deletions are verified locally:
+1. **Adding / Updating Mods:** Ask the user:
+   > *"Would you like me to upload the updated mods to your Google Drive (`minecraft-server/mods/`) for safe backup and sharing?"*
+2. **Removing Mods:** Ask the user:
+   > *"Would you like me to remove the deleted mods from your Google Drive (`minecraft-server/mods/`) to maintain zero drift?"*
 
-Upon user approval, run:
-```bash
-python3 .agents/skills/minecraft-mod-manager/scripts/upload_to_gdrive.py
-```
+Upon user approval, activate the **`minecraft-gdrive-sync`** skill to perform the Google Drive synchronization.
 
 ---
 
 ### Step 6: Troubleshooting Startup Errors
 1. **Missing Dependency Range:** Check logs for `Missing or unsupported mandatory dependencies: Mod ID: '<id>'`. Query and download the missing library using Steps 1–3.
-2. **Headless Crash:** If a `NoClassDefFoundError` or rendering error appears, ensure no client-side UI mods were placed into `server-client/` or `server-only/`. Move them to `client-only/` and re-run `python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --restart`.
+2. **Headless Crash:** If a `NoClassDefFoundError` or rendering error appears, ensure no client-side UI mods were placed into `server-client/` or `server-only/`. Move them to `client-only/` and re-run:
+   ```bash
+   python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
+   ```

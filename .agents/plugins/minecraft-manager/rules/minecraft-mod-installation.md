@@ -15,5 +15,5 @@ description: Declarative invariants and constraints for Minecraft mod management
 - **`modpack/client-only/`**: Visual, rendering, audio, and HUD enhancements. Prohibited from server deployment to prevent headless crashes.
 
 ### State Consistency & Health Verification
-- **Zero Drift:** The Docker server (`./data/mods/`) and the client (`ModrinthApp/.../mods`) must remain fully synchronized with their respective `modpack/` subfolders after any mod addition, upgrade, or removal.
+- **Zero Drift Across All Targets:** The Docker server (`./data/mods/`), the client (`ModrinthApp/.../mods`), and the Google Drive backup (`minecraft-server/mods/`) must remain fully synchronized with their respective `modpack/` subfolders after any mod addition, upgrade, or removal. Any stale or removed mods must be pruned from Google Drive as well as local targets.
 - **Boot Validation:** Any modification affecting server mods requires verifying container logs to confirm the server starts cleanly and reports ready state (`[DedicatedServer]: Done`) without dependency or runtime errors.

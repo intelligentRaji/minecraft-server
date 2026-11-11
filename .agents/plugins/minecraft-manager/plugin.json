@@ -1,0 +1,7 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "minecraft-manager",
+  "displayName": "Minecraft Server Manager",
+  "version": "1.0.0",
+  "description": "Comprehensive toolkit for Minecraft Forge server management, mod synchronization, and Google Drive backups."
+}
