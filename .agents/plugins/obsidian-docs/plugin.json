@@ -1,0 +1,7 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "obsidian-docs",
+  "displayName": "Obsidian Documentation Manager",
+  "version": "1.0.0",
+  "description": "Comprehensive toolkit for Obsidian vault documentation, note styling, and Termy agent integration."
+}

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "obsidian-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "obsidian-hybrid-search",
+        "mcp"
+      ],
+      "env": {
+        "OBSIDIAN_VAULT_PATH": "/home/wakaria/dev/minecraft-server/docs"
+      }
+    }
+  }
+}
