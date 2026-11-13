@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "source": "termy",
+  "updatedAt": "2026-11-13T17:50:53.781Z",
+  "vaultRoot": "/home/wakaria/dev/minecraft-server/docs",
+  "workspaceFolders": [
+    "/home/wakaria/dev/minecraft-server/docs"
+  ],
+  "activeFile": {
+    "filePath": "/home/wakaria/dev/minecraft-server/docs/01-character-progression/passive-skill-tree.md",
+    "vaultPath": "01-character-progression/passive-skill-tree.md",
+    "fileUrl": "file:///home/wakaria/dev/minecraft-server/docs/01-character-progression/passive-skill-tree.md",
+    "hasFocus": false
+  },
+  "openFiles": [
+    {
+      "filePath": "/home/wakaria/dev/minecraft-server/docs/01-character-progression/passive-skill-tree.md",
+      "vaultPath": "01-character-progression/passive-skill-tree.md",
+      "fileUrl": "file:///home/wakaria/dev/minecraft-server/docs/01-character-progression/passive-skill-tree.md",
+      "isActive": true
+    }
+  ],
+  "selection": null
+}
