@@ -17,3 +17,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Obsidian workspace layout and local cache
+**/.obsidian/workspace*.json
+**/.obsidian/plugins/*/binaries/
+**/.obsidian-hybrid-search.db*
+
+
+
