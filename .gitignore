@@ -12,6 +12,9 @@
 # Environment overrides
 .env
 
+# WireGuard private keys and client config
+/wireguard/
+
 # Python bytecode & cache
 __pycache__/
 *.py[cod]
