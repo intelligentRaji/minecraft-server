@@ -21,6 +21,5 @@ __pycache__/
 **/.obsidian/workspace*.json
 **/.obsidian/plugins/*/binaries/
 **/.obsidian-hybrid-search.db*
-
-
+**/.obsidian/plugins/termy/agent-context/obsidian-context.json
 
