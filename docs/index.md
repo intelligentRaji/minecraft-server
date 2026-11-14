@@ -29,3 +29,4 @@ This knowledge base provides step-by-step guides for progression, dimensions, co
 
 ### 6. [[journeymap|Utilities & Quality of Life]]
 * [[journeymap|JourneyMap Guide]]: Waypoints, radar, cave slicing, and setting up the live web map on a second monitor.
+* [[bundles|1.21 Bundles (Vanilla Backport)]]: Crafting, dyeing, and scrolling through bundle contents.

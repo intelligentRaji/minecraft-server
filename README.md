@@ -74,14 +74,66 @@ Run the sync script to automatically distribute mods to the Docker server (`./da
 
 ```bash
 # Preview what will be synced
-python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --dry-run
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --dry-run
 
 # Synchronize mods
-python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py
 
 # Synchronize mods and automatically restart the server if server mods changed
-python3 .agents/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
 ```
+
+### Installed Mods
+
+#### `modpack/server-client/` (Server & Client)
+| Mod | Jar |
+| :--- | :--- |
+| AttributeFix | `AttributeFix-Forge-1.20.1-21.0.5.jar` |
+| Biomes O' Plenty | `BiomesOPlenty-forge-1.20.1-19.0.0.96.jar` |
+| CoreCommands | `corecommands-2.0.1.jar` |
+| Curios API | `curios-forge-5.14.1+1.20.1.jar` |
+| Dynamic Trees | `DynamicTrees-1.20.1-1.4.11.jar` |
+| Dynamic Trees - Biomes O' Plenty | `DynamicTreesBOP-1.20.1-3.3.4.jar` |
+| Every Compat (Wood Good) | `everycomp-1.20-2.9.29-forge.jar` |
+| Farmer's Cutting: Biomes O' Plenty | `farmers-cutting-biomes-o-plenty-1.0.0.jar` |
+| Farmer's Delight | `FarmersDelight-1.20.1-1.3.4.jar` |
+| GlitchCore | `GlitchCore-forge-1.20.1-0.0.1.1.jar` |
+| Handcrafted | `handcrafted-forge-1.20.1-3.0.6.jar` |
+| ItemProductionLib | `ItemProductionLib-1.20.1-1.0.2b-all.jar` |
+| Jade | `Jade-1.20.1-Forge-11.13.3.jar` |
+| Just Enough Items (JEI) | `jei-1.20.1-forge-15.74.0.234.jar` |
+| Just Enough Resources (JER) | `JustEnoughResources-1.20.1-1.4.0.247.jar` |
+| Moonlight Lib | `moonlight-1.20-2.16.39-forge.jar` |
+| Passive Skill Tree | `PassiveSkillTree-1.20.1-BETA-0.6.14a-all.jar` |
+| Platform *(Vanilla Backport dep)* | `Platform-forge-1.20.1-1.4.2.jar` |
+| Resourceful Lib | `resourcefullib-forge-1.20.1-2.1.29.jar` |
+| TerraBlender | `TerraBlender-forge-1.20.1-3.0.1.11.jar` |
+| Twilight Forest | `twilightforest-1.20.1-4.3.2508-universal.jar` |
+| Twilight Forest - Dungeons & Villages | `tf_dnv-1.2.3.jar` |
+| Vanilla Backport *(worldgen disabled in `data/config/vanillabackport-common.toml`; Bundles of Bravery enabled)* | `VanillaBackport-forge-1.20.1-1.2.2.jar` |
+
+#### `modpack/server-only/` (Server Only)
+| Mod | Jar |
+| :--- | :--- |
+| Chunky | `Chunky-1.3.146.jar` |
+| FerriteCore | `ferritecore-6.0.1-forge.jar` |
+| LuckPerms | `LuckPerms-Forge-5.4.102.jar` |
+| ModernFix | `modernfix-forge-5.27.91+mc1.20.1.jar` |
+| Paradigm | `Paradigm-forge-1.20.1-2.5.4.jar` |
+| Simple Backups | `SimpleBackups-1.20.1-3.1.24.jar` |
+
+#### `modpack/client-only/` (Client Only)
+| Mod | Jar |
+| :--- | :--- |
+| AppleSkin | `appleskin-forge-mc1.20.1-2.5.1.jar` |
+| Better Ping Display | `BetterPingDisplay-1.20.1-1.1.jar` |
+| Controlling | `Controlling-forge-1.20.1-12.0.2.jar` |
+| Distant Horizons | `DistantHorizons-3.3.3-1.20.1-fabric-forge.jar` |
+| Embeddium | `embeddium-0.3.31+mc1.20.1.jar` |
+| JourneyMap | `journeymap-forge-1.20.1-6.0.7.jar` |
+| Mouse Tweaks | `MouseTweaks-forge-mc1.20.1-2.25.1.jar` |
+| Oculus | `oculus-mc1.20.1-1.8.0.jar` |
+| Searchables | `Searchables-forge-1.20.1-1.0.3.jar` |
 
 ---
 
