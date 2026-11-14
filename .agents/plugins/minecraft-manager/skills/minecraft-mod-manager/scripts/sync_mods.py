@@ -105,6 +105,7 @@ def main():
     )
 
     # 2. Sync Client (server-client + client-only)
+    client_missing = False
     if not args.skip_client:
         if args.client_path.exists():
             sync_target(
@@ -114,13 +115,22 @@ def main():
                 dry_run=args.dry_run
             )
         else:
-            print(f"\n[CLIENT] Directory not found: {args.client_path} (Skipping client sync)")
+            client_missing = True
+            if not Path("/mnt/c/Users").exists() and args.client_path == DEFAULT_CLIENT_MODS_DIR:
+                print(f"\n[CLIENT] Error: /mnt/c/Users is not accessible (likely sandboxed) and fallback {args.client_path} does not exist.")
+                print("  -> Re-run outside the sandbox (BypassSandbox: true), or pass --skip-client / --client-path.")
+            else:
+                print(f"\n[CLIENT] Error: Directory not found: {args.client_path}")
+                print("  -> Pass --client-path <dir> or --skip-client if client sync is not needed.")
 
     # 3. Optional server restart
     if args.restart and server_changed and not args.dry_run:
         print("\nRestarting Docker Minecraft server container...")
         subprocess.run(["docker", "compose", "restart", "mc"], cwd=REPO_ROOT, check=True)
         print("Server restarted successfully.")
+
+    if client_missing and not args.dry_run:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ Step-by-step procedure for installing and configuring mods.
 ---
 
 ### Step 1: Discover & Inspect Mod Compatibility
-Query the mod on Modrinth for Forge 1.20.1 compatibility and inspect any required dependencies:
+Query the mod on Modrinth for Forge 1.20.1 compatibility and inspect any required dependencies *(requires network access — use `BypassSandbox: true`)*:
 ```bash
 python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug>
 ```
@@ -34,7 +34,7 @@ Repeat for any required dependencies reported in Step 1.
 ---
 
 ### Step 3: Synchronize Modpack
-Synchronize the new `.jar` files with both the Docker server (`./data/mods/`) and the Windows Modrinth App client:
+Synchronize the new `.jar` files with both the Docker server (`./data/mods/`) and the Windows Modrinth App client *(requires `BypassSandbox: true` to access `/mnt/c/Users/...` and the Docker socket for `--restart`; pass `--skip-client` only if intentionally skipping Windows client sync)*:
 
 ```bash
 # Preview changes:
