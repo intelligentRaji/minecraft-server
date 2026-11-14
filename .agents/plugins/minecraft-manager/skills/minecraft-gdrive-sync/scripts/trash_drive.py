@@ -19,12 +19,13 @@ def delete_targeted_jars(client: GDriveClient, targets: set[str], mods_folder_id
         cat_id = client.get_folder_id(cat, parent_id=mods_folder_id)
         if not cat_id:
             continue
-        file_map = client.get_file_map(cat_id)
-        for name, file_id in file_map.items():
+        grouped = client.get_grouped_files(cat_id)
+        for name, file_ids in grouped.items():
             if name in targets:
-                print(f"[{cat.upper()}] Found targeted file: {name}")
-                if client.trash_file(file_id, name=name, dry_run=dry_run):
-                    trashed_count += 1
+                print(f"[{cat.upper()}] Found targeted file: {name} ({len(file_ids)} copy/copies)")
+                for file_id in file_ids:
+                    if client.trash_file(file_id, name=name, dry_run=dry_run):
+                        trashed_count += 1
     return trashed_count
 
 
@@ -39,16 +40,23 @@ def prune_all_categories(client: GDriveClient, mods_folder_id: str, dry_run: boo
         if local_dir.exists():
             local_jars = {f.name for f in local_dir.iterdir() if f.is_file() and f.suffix == ".jar"}
 
-        remote_map = client.get_file_map(cat_id, extension=".jar")
+        remote_grouped = client.get_grouped_files(cat_id, extension=".jar")
         print(f"\n[{cat.upper()}] Checking Drive contents vs local modpack/{cat}...")
-        stale = [name for name in remote_map if name not in local_jars]
-        if not stale:
-            print("  -> Drive is in sync with local.")
-            continue
+        found_issue = False
+        for name, file_ids in remote_grouped.items():
+            if name not in local_jars:
+                found_issue = True
+                for file_id in file_ids:
+                    if client.trash_file(file_id, name=name, dry_run=dry_run):
+                        trashed_count += 1
+            elif len(file_ids) > 1:
+                found_issue = True
+                for dup_id in file_ids[1:]:
+                    if client.trash_file(dup_id, name=f"{name} (duplicate)", dry_run=dry_run):
+                        trashed_count += 1
 
-        for s_name in stale:
-            if client.trash_file(remote_map[s_name], name=s_name, dry_run=dry_run):
-                trashed_count += 1
+        if not found_issue:
+            print("  -> Drive is in sync with local.")
 
     return trashed_count
 

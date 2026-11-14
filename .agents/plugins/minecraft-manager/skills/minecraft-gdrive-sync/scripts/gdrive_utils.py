@@ -69,18 +69,22 @@ class GDriveClient:
         raise RuntimeError(f"Unexpected response when creating folder '{name}': {out}")
 
     def list_files(self, parent_id: str) -> List[Dict[str, Any]]:
-        items = self.run_json(["readonly", "ls", parent_id])
+        items = self.run_json(["readonly", "ls", parent_id, "--max", "0"])
         return items if isinstance(items, list) else []
 
-    def get_file_map(self, parent_id: str, extension: Optional[str] = None) -> Dict[str, str]:
-        """Returns filename -> file_id dictionary."""
+    def get_grouped_files(self, parent_id: str, extension: Optional[str] = None) -> Dict[str, List[str]]:
+        """Returns filename -> list of file_ids dictionary (preserving duplicates)."""
         items = self.list_files(parent_id)
-        file_map: Dict[str, str] = {}
+        grouped: Dict[str, List[str]] = {}
         for it in items:
             name = it.get("name", "")
             if extension is None or name.endswith(extension):
-                file_map[name] = it["id"]
-        return file_map
+                grouped.setdefault(name, []).append(it["id"])
+        return grouped
+
+    def get_file_map(self, parent_id: str, extension: Optional[str] = None) -> Dict[str, str]:
+        """Returns filename -> file_id dictionary."""
+        return {name: ids[0] for name, ids in self.get_grouped_files(parent_id, extension=extension).items()}
 
     def trash_file(self, file_id: str, name: str = "", dry_run: bool = False) -> bool:
         label = name or file_id
@@ -132,16 +136,21 @@ class GDriveClient:
         if local_dir.exists():
             local_files = {f.name: f for f in local_dir.iterdir() if f.is_file() and f.suffix == extension}
 
-        remote_map = self.get_file_map(remote_folder_id, extension=extension)
+        remote_grouped = self.get_grouped_files(remote_folder_id, extension=extension)
 
         if prune:
-            for r_name, r_id in remote_map.items():
+            for r_name, r_ids in remote_grouped.items():
                 if r_name not in local_files:
-                    if self.trash_file(r_id, name=r_name, dry_run=dry_run):
-                        trashed_count += 1
+                    for r_id in r_ids:
+                        if self.trash_file(r_id, name=r_name, dry_run=dry_run):
+                            trashed_count += 1
+                elif len(r_ids) > 1:
+                    for dup_id in r_ids[1:]:
+                        if self.trash_file(dup_id, name=f"{r_name} (duplicate)", dry_run=dry_run):
+                            trashed_count += 1
 
         for l_name, l_path in sorted(local_files.items()):
-            if l_name in remote_map:
+            if l_name in remote_grouped:
                 print(f"  [=] Already on Drive: {l_name}")
             else:
                 if self.upload_file(l_path, remote_folder_id, dry_run=dry_run):
