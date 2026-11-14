@@ -29,35 +29,39 @@ def run_rcon_batch(
     dry_run: bool = False,
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
 ) -> str:
-    """Execute one or more Minecraft commands in a single rcon-cli invocation."""
+    """Execute one or more Minecraft commands sequentially via rcon-cli."""
     cleaned = [cmd.strip().lstrip("/") for cmd in commands if cmd.strip()]
     if not cleaned:
         raise ValueError("At least one non-empty RCON command is required.")
 
-    full_cmd = ["docker", "exec", CONTAINER_NAME, "rcon-cli", *cleaned]
-    if dry_run:
-        print(f"[dry-run] {shlex.join(full_cmd)}")
-        return ""
+    outputs: list[str] = []
+    for cmd in cleaned:
+        full_cmd = ["docker", "exec", CONTAINER_NAME, "rcon-cli", cmd]
+        if dry_run:
+            print(f"[dry-run] {shlex.join(full_cmd)}")
+            continue
 
-    try:
-        result = subprocess.run(
-            full_cmd,
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError(f"Required executable not found: {full_cmd[0]}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"RCON command timed out after {timeout}s: {shlex.join(full_cmd)}") from exc
+        try:
+            result = subprocess.run(
+                full_cmd,
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(f"Required executable not found: {full_cmd[0]}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"RCON command timed out after {timeout}s: {shlex.join(full_cmd)}") from exc
 
-    if result.returncode != 0:
-        stderr = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(
-            f"RCON failed ({shlex.join(full_cmd)}): {stderr} (is '{CONTAINER_NAME}' running?)"
-        )
-    return result.stdout.strip()
+        if result.returncode != 0:
+            stderr = result.stderr.strip() or result.stdout.strip()
+            raise RuntimeError(
+                f"RCON failed ({shlex.join(full_cmd)}): {stderr} (is '{CONTAINER_NAME}' running?)"
+            )
+        if result.stdout.strip():
+            outputs.append(result.stdout.strip())
+    return "\n".join(outputs)
 
 
 def run_rcon(

@@ -15,9 +15,9 @@ Step-by-step procedure for assigning or revoking player roles by nickname on the
 
 | Role | Team / LP Group | Prefix | Color | LP Weight | OP Level | Rights Summary |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Owner** | `owner` | `[OWN] ` *(bold red)* | `red` | `100` | `4` | Full server control (`/stop`, `/save-all`, `/op`, etc.) via OP + LuckPerms |
-| **Admin** | `admin` | `[ADM] ` *(red)* | `red` | `80` | `0` | LuckPerms-managed permissions (live, no restart) |
-| **Moderator** | `moderator` | `[MOD] ` *(purple)* | `light_purple` | `60` | `0` | LuckPerms-managed permissions (live, no restart) |
+| **Owner** | `owner` | `[OWN] ` *(bold red)* | `red` | `100` | `4` | Full server control (`/stop`, `/save-all`, `/op`, all Paradigm/mod commands) via OP 4 + LuckPerms `*` wildcard |
+| **Admin** | `admin` | `[ADM] ` *(red)* | `red` | `80` | `4` | Full OP 4 control (live via `op <name>`, no restart) + LuckPerms `*` wildcard (all Paradigm/mod commands) |
+| **Moderator** | `moderator` | `[MOD] ` *(purple)* | `light_purple` | `60` | `0` | OP 3-equivalent moderation & gameplay commands via LuckPerms + Paradigm (live, no restart) |
 | **Player** | `default` *(no team)* | *(no prefix)* | Default | `10` | `0` | Normal survival gameplay + `CoreCommands` player commands |
 
 > **Note:** All role assignments apply **live with zero server restarts**.
@@ -39,7 +39,7 @@ Activate the **`minecraft-rcon`** skill to execute the appropriate commands on `
 - **Assign `owner`, `admin`, or `moderator`:**
   1. `team join <role> <name>`
   2. `lp user <uuid_or_name> parent set <role>`
-  3. `op <name>` *(for `owner`)* **or** `deop <name>` *(for `admin` / `moderator`)*
+  3. `op <name>` *(for `owner` / `admin`)* **or** `deop <name>` *(for `moderator`)*
   4. `team list <role>` *(verification)*
 
 - **Assign `player` (revoke elevated role):**
