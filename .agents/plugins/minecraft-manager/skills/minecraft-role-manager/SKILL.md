@@ -15,9 +15,9 @@ Step-by-step procedure for assigning or revoking player roles by nickname on the
 
 | Role | Team / LP Group | Prefix | Color | LP Weight | OP Level | Rights Summary |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Owner** | `owner` | `[OWN] ` *(bold red)* | `red` | `100` | `4` | Full server control (`/stop`, `/save-all`, `/op`, all Paradigm/mod commands) via OP 4 + LuckPerms `*` wildcard |
-| **Admin** | `admin` | `[ADM] ` *(red)* | `red` | `80` | `4` | Full OP 4 control (live via `op <name>`, no restart) + LuckPerms `*` wildcard (all Paradigm/mod commands) |
-| **Moderator** | `moderator` | `[MOD] ` *(purple)* | `light_purple` | `60` | `0` | OP 3-equivalent moderation & gameplay commands via LuckPerms + Paradigm (live, no restart) |
+| **Owner** | `owner` | `&c&l[OWN] ` *(bold red)* | `red` | `100` | `4` | Full server control (`/stop`, `/save-all`, `/op`, all Paradigm/mod commands) via OP 4 + LuckPerms `*` wildcard |
+| **Admin** | `admin` | `&c[ADM] ` *(red)* | `red` | `80` | `4` | Full OP 4 control (live via `op <name>`, no restart) + LuckPerms `*` wildcard (all Paradigm/mod commands) |
+| **Moderator** | `moderator` | `&d[MOD] ` *(purple)* | `light_purple` | `60` | `0` | OP 3-equivalent moderation & gameplay commands via LuckPerms + Paradigm (live, no restart) |
 | **Player** | `default` *(no team)* | *(no prefix)* | Default | `10` | `0` | Normal survival gameplay + `CoreCommands` player commands |
 
 > **Note:** All role assignments apply **live with zero server restarts**.
