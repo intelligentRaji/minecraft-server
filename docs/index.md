@@ -23,6 +23,7 @@ This knowledge base provides step-by-step guides for progression, dimensions, co
 
 ### 4. [[farmers-delight|Farming & Cuisine]]
 * [[farmers-delight|Farmer's Delight]]: Cutting boards, cooking pots, feasts, and nourishment buffs.
+* [[create-slice-and-dice|Create: Slice & Dice]]: Automating Farmer's Delight slicing, cooking, and crop watering with Create.
 
 ### 5. [[handcrafted-furniture|Building & Decoration]]
 * [[handcrafted-furniture|Handcrafted Furniture & BOP Woods]]: Creating custom chairs, couches, counters, and decorating with Biomes O' Plenty lumber.
@@ -30,3 +31,8 @@ This knowledge base provides step-by-step guides for progression, dimensions, co
 ### 6. [[journeymap|Utilities & Quality of Life]]
 * [[journeymap|JourneyMap Guide]]: Waypoints, radar, cave slicing, and setting up the live web map on a second monitor.
 * [[bundles|1.21 Bundles (Vanilla Backport)]]: Crafting, dyeing, and scrolling through bundle contents.
+* [[fcm-clans|FCM Clans]]: Creating clans, setting tags/colors/descriptions, managing requests, and diplomacy/wars.
+
+### 7. Tech & Magic
+* [[create|Create]]: Rotational power, water/wind/steam engines, and kinetic processing machines.
+* [[botania|Botania]]: Floral magic, Mana pools, Runic Altar, Terrasteel, and the Lexica Botania.

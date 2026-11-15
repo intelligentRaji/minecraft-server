@@ -90,21 +90,27 @@ python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/s
 | :--- | :--- |
 | AttributeFix | `AttributeFix-Forge-1.20.1-21.0.5.jar` |
 | Biomes O' Plenty | `BiomesOPlenty-forge-1.20.1-19.0.0.96.jar` |
+| Botania | `Botania-1.20.1-456-FORGE.jar` |
 | CoreCommands | `corecommands-2.0.1.jar` |
+| Create | `create-1.20.1-6.0.8.jar` |
+| Create: Slice & Dice | `sliceanddice-forge-3.6.0.jar` |
 | Curios API | `curios-forge-5.14.1+1.20.1.jar` |
 | Dynamic Trees | `DynamicTrees-1.20.1-1.4.11.jar` |
 | Dynamic Trees - Biomes O' Plenty | `DynamicTreesBOP-1.20.1-3.3.4.jar` |
 | Every Compat (Wood Good) | `everycomp-1.20-2.9.29-forge.jar` |
 | Farmer's Cutting: Biomes O' Plenty | `farmers-cutting-biomes-o-plenty-1.0.0.jar` |
 | Farmer's Delight | `FarmersDelight-1.20.1-1.3.4.jar` |
+| FCM Clans | `fcmclans-0.1.0.jar` |
 | GlitchCore | `GlitchCore-forge-1.20.1-0.0.1.1.jar` |
 | Handcrafted | `handcrafted-forge-1.20.1-3.0.6.jar` |
 | ItemProductionLib | `ItemProductionLib-1.20.1-1.0.2b-all.jar` |
 | Jade | `Jade-1.20.1-Forge-11.13.3.jar` |
 | Just Enough Items (JEI) | `jei-1.20.1-forge-15.74.0.234.jar` |
 | Just Enough Resources (JER) | `JustEnoughResources-1.20.1-1.4.0.247.jar` |
+| Kotlin for Forge *(Create: Slice & Dice dep)* | `kotlinforforge-4.12.0-all.jar` |
 | Moonlight Lib | `moonlight-1.20-2.16.39-forge.jar` |
 | Passive Skill Tree | `PassiveSkillTree-1.20.1-BETA-0.6.14a-all.jar` |
+| Patchouli *(Botania dep)* | `Patchouli-1.20.1-85-FORGE.jar` |
 | Platform *(Vanilla Backport dep)* | `Platform-forge-1.20.1-1.4.2.jar` |
 | Resourceful Lib | `resourcefullib-forge-1.20.1-2.1.29.jar` |
 | TerraBlender | `TerraBlender-forge-1.20.1-3.0.1.11.jar` |
