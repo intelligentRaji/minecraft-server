@@ -11,7 +11,6 @@ directories (`data/config/chunky/tasks/`, `data/logs/`, `data/world/`).
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,13 +21,11 @@ if str(MODS_DIR) not in sys.path:
     sys.path.insert(0, str(MODS_DIR))
 
 from _bridge import (  # noqa: E402
-    check_forbidden_entries,
-    collect_config_files,
+    DEFAULT_FORBIDDEN_SUFFIXES,
+    apply_static_files,
     is_strict_int,
     run_sync_cli,
-    scan_mapping_for_secrets,
-    scan_text_for_secrets,
-    sync_static_file as bridge_sync_static_file,
+    validate_static_configs,
 )
 
 REPO_ROOT = MODS_DIR.parent
@@ -45,17 +42,7 @@ FORBIDDEN_NAMES: frozenset[str] = frozenset({
     "world",
 })
 
-FORBIDDEN_SUFFIXES: tuple[str, ...] = (
-    ".zip",
-    ".tar",
-    ".gz",
-    ".tgz",
-    ".bak",
-    ".tmp",
-    ".lock",
-    ".db",
-    ".jar",
-)
+FORBIDDEN_SUFFIXES: tuple[str, ...] = DEFAULT_FORBIDDEN_SUFFIXES
 
 EXPECTED_CONFIG_KEYS: frozenset[str] = frozenset({
     "version",
@@ -133,65 +120,18 @@ def validate_chunky_config(data: Any) -> list[str]:
 
 def validate_configs() -> dict[str, bytes]:
     """Validate all static config files in `mods/chunky/configs/` before placement."""
-    if not CONFIGS_DIR.is_dir():
-        raise RuntimeError(f"Missing configs directory: {CONFIGS_DIR}")
-
-    errors = check_forbidden_entries(CONFIGS_DIR, FORBIDDEN_NAMES, FORBIDDEN_SUFFIXES)
-    config_files, collect_errors = collect_config_files(CONFIGS_DIR)
-    errors.extend(collect_errors)
-
-    expected_files = set(STATIC_FILES.keys())
-    actual_files = set(config_files.keys())
-
-    missing = sorted(expected_files - actual_files)
-    unexpected = sorted(actual_files - expected_files)
-    if missing:
-        errors.append(f"Missing expected config files in configs/: {', '.join(missing)}")
-    if unexpected:
-        errors.append(f"Unexpected files in configs/: {', '.join(unexpected)}")
-
-    loaded_bytes: dict[str, bytes] = {}
-    for rel in sorted(actual_files & expected_files):
-        raw_bytes = config_files[rel].read_bytes()
-        loaded_bytes[rel] = raw_bytes
-        try:
-            raw_text = raw_bytes.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            errors.append(f"{rel}: invalid UTF-8 ({exc})")
-            continue
-
-        errors.extend(scan_text_for_secrets(raw_text, rel))
-
-        try:
-            parsed = json.loads(raw_text)
-        except Exception as exc:
-            errors.append(f"{rel}: invalid JSON ({exc})")
-            continue
-
-        errors.extend(scan_mapping_for_secrets(parsed, rel))
-
-        if rel == "config.json":
-            errors.extend(validate_chunky_config(parsed))
-
-    if errors:
-        raise ValueError("Pre-flight validation failed:\n  - " + "\n  - ".join(errors))
-
-    return loaded_bytes
+    return validate_static_configs(
+        CONFIGS_DIR,
+        STATIC_FILES,
+        {"config.json": validate_chunky_config},
+        forbidden_names=FORBIDDEN_NAMES,
+        forbidden_suffixes=FORBIDDEN_SUFFIXES,
+    )
 
 
 def apply_configs(loaded_bytes: dict[str, bytes], dry_run: bool) -> tuple[int, int]:
     """Place validated Chunky static files into `DATA_DIR`."""
-    changed = 0
-    unchanged = 0
-    for rel in STATIC_FILES:
-        dst_path = DATA_DIR.joinpath(*STATIC_FILES[rel])
-        if bridge_sync_static_file(dst_path, loaded_bytes[rel], dry_run=dry_run):
-            action = "Would update (static)" if dry_run else "Updated (static)"
-            print(f"  [{action}] {rel} -> {dst_path.relative_to(DATA_DIR).as_posix()}")
-            changed += 1
-        else:
-            unchanged += 1
-    return changed, unchanged
+    return apply_static_files(STATIC_FILES, DATA_DIR, loaded_bytes, dry_run)
 
 
 def main(argv: list[str] | None = None) -> int:

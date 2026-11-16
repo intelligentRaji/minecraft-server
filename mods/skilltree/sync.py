@@ -12,9 +12,7 @@ Never reads, copies, or modifies excluded world/player runtime directories (`dat
 
 from __future__ import annotations
 
-import math
 import sys
-import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -24,13 +22,12 @@ if str(MODS_DIR) not in sys.path:
     sys.path.insert(0, str(MODS_DIR))
 
 from _bridge import (  # noqa: E402
-    check_forbidden_entries,
-    collect_config_files,
+    DEFAULT_FORBIDDEN_SUFFIXES,
+    apply_static_files,
+    is_finite_number as _is_finite_number,
     is_strict_int,
     run_sync_cli,
-    scan_mapping_for_secrets,
-    scan_text_for_secrets,
-    sync_static_file as bridge_sync_static_file,
+    validate_static_configs,
 )
 
 REPO_ROOT = MODS_DIR.parent
@@ -49,17 +46,7 @@ FORBIDDEN_NAMES: frozenset[str] = frozenset({
     "mods",
 })
 
-FORBIDDEN_SUFFIXES: tuple[str, ...] = (
-    ".zip",
-    ".tar",
-    ".gz",
-    ".tgz",
-    ".bak",
-    ".tmp",
-    ".lock",
-    ".db",
-    ".jar",
-)
+FORBIDDEN_SUFFIXES: tuple[str, ...] = DEFAULT_FORBIDDEN_SUFFIXES
 
 EQUIPMENT_SOCKET_KEYS: tuple[str, ...] = (
     "Default Helmets Sockets",
@@ -71,15 +58,6 @@ EQUIPMENT_SOCKET_KEYS: tuple[str, ...] = (
     "Default Rings Sockets",
     "Default Necklaces Sockets",
 )
-
-
-def _is_finite_number(value: Any) -> bool:
-    """Return True if `value` is a finite int or float and not a bool."""
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-    )
 
 
 def _require_section(
@@ -294,67 +272,21 @@ def validate_server_toml(data: dict[str, Any]) -> list[str]:
 
 def validate_configs() -> dict[str, bytes]:
     """Validate all static config files in `mods/skilltree/configs/` before placement."""
-    if not CONFIGS_DIR.is_dir():
-        raise RuntimeError(f"Missing configs directory: {CONFIGS_DIR}")
-
-    errors = check_forbidden_entries(CONFIGS_DIR, FORBIDDEN_NAMES, FORBIDDEN_SUFFIXES)
-    config_files, collect_errors = collect_config_files(CONFIGS_DIR)
-    errors.extend(collect_errors)
-
-    expected_files = set(STATIC_FILES.keys())
-    actual_files = set(config_files.keys())
-
-    missing = sorted(expected_files - actual_files)
-    unexpected = sorted(actual_files - expected_files)
-    if missing:
-        errors.append(f"Missing expected config files in configs/: {', '.join(missing)}")
-    if unexpected:
-        errors.append(f"Unexpected files in configs/: {', '.join(unexpected)}")
-
-    loaded_bytes: dict[str, bytes] = {}
-    for rel in sorted(actual_files & expected_files):
-        raw_bytes = config_files[rel].read_bytes()
-        loaded_bytes[rel] = raw_bytes
-        try:
-            raw_text = raw_bytes.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            errors.append(f"{rel}: invalid UTF-8 ({exc})")
-            continue
-
-        errors.extend(scan_text_for_secrets(raw_text, rel))
-
-        try:
-            parsed = tomllib.loads(raw_text)
-        except Exception as exc:
-            errors.append(f"{rel}: invalid TOML ({exc})")
-            continue
-
-        errors.extend(scan_mapping_for_secrets(parsed, rel))
-
-        if rel == "skilltree-common.toml":
-            errors.extend(validate_common_toml(parsed))
-        elif rel == "skilltree-server.toml":
-            errors.extend(validate_server_toml(parsed))
-
-    if errors:
-        raise ValueError("Pre-flight validation failed:\n  - " + "\n  - ".join(errors))
-
-    return loaded_bytes
+    return validate_static_configs(
+        CONFIGS_DIR,
+        STATIC_FILES,
+        {
+            "skilltree-common.toml": validate_common_toml,
+            "skilltree-server.toml": validate_server_toml,
+        },
+        forbidden_names=FORBIDDEN_NAMES,
+        forbidden_suffixes=FORBIDDEN_SUFFIXES,
+    )
 
 
 def apply_configs(loaded_bytes: dict[str, bytes], dry_run: bool) -> tuple[int, int]:
     """Place validated Passive Skill Tree static files into `DATA_DIR`."""
-    changed = 0
-    unchanged = 0
-    for rel in STATIC_FILES:
-        dst_path = DATA_DIR.joinpath(*STATIC_FILES[rel])
-        if bridge_sync_static_file(dst_path, loaded_bytes[rel], dry_run=dry_run):
-            action = "Would update (static)" if dry_run else "Updated (static)"
-            print(f"  [{action}] {rel} -> {dst_path.relative_to(DATA_DIR).as_posix()}")
-            changed += 1
-        else:
-            unchanged += 1
-    return changed, unchanged
+    return apply_static_files(STATIC_FILES, DATA_DIR, loaded_bytes, dry_run)
 
 
 def main(argv: list[str] | None = None) -> int:
