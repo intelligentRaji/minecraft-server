@@ -23,6 +23,9 @@
     },
     {
       "path": "mods/corecommands/.agents/skills"
+    },
+    {
+      "path": "mods/farmersdelight/.agents/skills"
     }
   ]
 }
