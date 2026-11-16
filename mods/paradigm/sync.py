@@ -12,19 +12,28 @@ Places static configurations from `mods/paradigm/configs/` into `data/config/par
 
 from __future__ import annotations
 
-import argparse
-import hashlib
 import json
-import os
-import re
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any
 
 # Deterministic zero-walk path resolution (mods/paradigm/sync.py -> repo root)
 MOD_DIR = Path(__file__).resolve().parent
-REPO_ROOT = MOD_DIR.parent.parent
+MODS_DIR = MOD_DIR.parent
+if str(MODS_DIR) not in sys.path:
+    sys.path.insert(0, str(MODS_DIR))
+
+from _bridge import (  # noqa: E402
+    atomic_write_bytes,
+    check_forbidden_entries,
+    collect_config_files,
+    run_sync_cli,
+    scan_mapping_for_secrets,
+    sha256_bytes,
+    sync_static_file as bridge_sync_static_file,
+)
+
+REPO_ROOT = MODS_DIR.parent
 CONFIGS_DIR = MOD_DIR / "configs"
 DATA_DIR = REPO_ROOT / "data"
 TARGET_DIR = DATA_DIR / "config" / "paradigm"
@@ -71,63 +80,18 @@ FORBIDDEN_NAMES: frozenset[str] = frozenset({
     "menus",
 })
 
-SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("Discord Webhook URL", re.compile(r"https?://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d+/[\w-]+", re.IGNORECASE)),
-    ("Discord Bot Token", re.compile(r"[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}")),
-    ("Private Key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
-)
-
-SECRET_KEY_NAMES: frozenset[str] = frozenset({
-    "bottoken",
-    "webhookurl",
-    "password",
-    "secret",
-    "apikey",
-    "accesstoken",
-    "clientsecret",
-})
-
-
-def sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def scan_json_for_secrets(obj: Any, rel_path: str, key_path: str = "") -> list[str]:
-    errors: list[str] = []
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            current_path = f"{key_path}.{k}" if key_path else k
-            if k.lower() in SECRET_KEY_NAMES and isinstance(v, str) and v.strip():
-                errors.append(f"{rel_path}: non-empty secret key '{current_path}'")
-            errors.extend(scan_json_for_secrets(v, rel_path, current_path))
-    elif isinstance(obj, list):
-        for idx, item in enumerate(obj):
-            errors.extend(scan_json_for_secrets(item, rel_path, f"{key_path}[{idx}]"))
-    elif isinstance(obj, str):
-        for label, pattern in SECRET_PATTERNS:
-            if pattern.search(obj):
-                errors.append(f"{rel_path}: detected {label} at '{key_path}'")
-    return errors
-
 
 def validate_configs() -> dict[str, Any]:
     """Validate all static and mixed config files in mods/paradigm/configs/ before placement."""
-    errors: list[str] = []
-
     if not CONFIGS_DIR.is_dir():
         raise RuntimeError(f"Missing configs directory: {CONFIGS_DIR}")
 
-    for forbidden in sorted(FORBIDDEN_NAMES):
-        candidate = CONFIGS_DIR / forbidden
-        if candidate.exists():
-            errors.append(f"Forbidden file/directory present in configs/: {forbidden}")
+    errors = check_forbidden_entries(CONFIGS_DIR, FORBIDDEN_NAMES)
+    config_files, collect_errors = collect_config_files(CONFIGS_DIR)
+    errors.extend(collect_errors)
 
     expected_files = set(STATIC_FILES) | {"cooldowns.json", "holograms.json"}
-    actual_files = {
-        p.relative_to(CONFIGS_DIR).as_posix()
-        for p in CONFIGS_DIR.rglob("*")
-        if p.is_file()
-    }
+    actual_files = set(config_files.keys())
 
     missing = sorted(expected_files - actual_files)
     unexpected = sorted(actual_files - expected_files)
@@ -138,7 +102,7 @@ def validate_configs() -> dict[str, Any]:
 
     parsed: dict[str, Any] = {}
     for rel in sorted(actual_files & expected_files):
-        fpath = CONFIGS_DIR / rel
+        fpath = config_files[rel]
         try:
             raw_text = fpath.read_text(encoding="utf-8")
             data = json.loads(raw_text)
@@ -147,7 +111,7 @@ def validate_configs() -> dict[str, Any]:
             errors.append(f"{rel}: invalid JSON ({exc})")
             continue
 
-        errors.extend(scan_json_for_secrets(data, rel))
+        errors.extend(scan_mapping_for_secrets(data, rel))
 
     main_data = parsed.get("main.json")
     if isinstance(main_data, dict):
@@ -223,53 +187,15 @@ def validate_configs() -> dict[str, Any]:
     return parsed
 
 
-def atomic_write_bytes(target_path: Path, data: bytes, default_mode: int = 0o664) -> None:
-    """Write `data` to a temporary file in `target_path.parent`, preserve permissions/ownership, and atomically replace."""
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    if target_path.exists():
-        st = target_path.stat()
-        mode = st.st_mode & 0o777
-        uid, gid = st.st_uid, st.st_gid
-    else:
-        parent_st = target_path.parent.stat()
-        mode = default_mode
-        uid, gid = parent_st.st_uid, parent_st.st_gid
-
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{target_path.name}.",
-        suffix=".tmp",
-        dir=str(target_path.parent),
-    )
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        os.chmod(tmp_path, mode)
-        if hasattr(os, "geteuid") and os.geteuid() == 0:
-            os.chown(tmp_path, uid, gid)
-        os.replace(tmp_path, target_path)
-    except Exception:
-        if tmp_path.exists():
-            tmp_path.unlink(missing_ok=True)
-        raise
-
-
 def sync_static_file(rel: str, dry_run: bool) -> bool:
     """Atomically copy `configs/<rel>` to `data/config/paradigm/<rel>` when SHA-256 differs."""
-    src_path = CONFIGS_DIR / rel
+    src_bytes = (CONFIGS_DIR / rel).read_bytes()
     dst_path = TARGET_DIR / rel
-    src_bytes = src_path.read_bytes()
-
-    if dst_path.exists() and sha256_bytes(dst_path.read_bytes()) == sha256_bytes(src_bytes):
-        return False
-
-    action = "Would update (static)" if dry_run else "Updated (static)"
-    print(f"  [{action}] {rel}")
-    if not dry_run:
-        atomic_write_bytes(dst_path, src_bytes)
-    return True
+    if bridge_sync_static_file(dst_path, src_bytes, dry_run=dry_run):
+        action = "Would update (static)" if dry_run else "Updated (static)"
+        print(f"  [{action}] {rel}")
+        return True
+    return False
 
 
 def sync_mixed_file(
@@ -325,28 +251,13 @@ def sync_mixed_file(
     return True
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Validate and atomically place Paradigm static configs into data/config/paradigm/."
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Validate and preview changes without modifying data/config/paradigm/.",
-    )
-    args = parser.parse_args(argv)
-
-    try:
-        parsed = validate_configs()
-    except Exception as exc:
-        print(f"[paradigm/sync.py] ERROR: {exc}", file=sys.stderr)
-        return 1
-
+def apply_configs(parsed: dict[str, Any], dry_run: bool) -> tuple[int, int]:
+    """Place validated Paradigm static and mixed configs into `TARGET_DIR`."""
     changed_count = 0
     unchanged_count = 0
 
     for rel in STATIC_FILES:
-        if sync_static_file(rel, dry_run=args.dry_run):
+        if sync_static_file(rel, dry_run=dry_run):
             changed_count += 1
         else:
             unchanged_count += 1
@@ -357,7 +268,7 @@ def main(argv: list[str] | None = None) -> int:
         static_keys=COOLDOWNS_STATIC_KEYS,
         runtime_key="cooldowns",
         runtime_first=True,
-        dry_run=args.dry_run,
+        dry_run=dry_run,
     ):
         changed_count += 1
     else:
@@ -369,18 +280,23 @@ def main(argv: list[str] | None = None) -> int:
         static_keys=HOLOGRAMS_STATIC_KEYS,
         runtime_key="holograms",
         runtime_first=False,
-        dry_run=args.dry_run,
+        dry_run=dry_run,
     ):
         changed_count += 1
     else:
         unchanged_count += 1
 
-    mode_label = "DRY-RUN" if args.dry_run else "APPLIED"
-    print(
-        f"[paradigm/sync.py] {mode_label}: {changed_count} changed, {unchanged_count} unchanged "
-        f"(total {changed_count + unchanged_count} files verified)."
+    return changed_count, unchanged_count
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_sync_cli(
+        "paradigm",
+        validate_configs,
+        apply_configs,
+        argv=argv,
+        description="Validate and atomically place Paradigm static configs into data/config/paradigm/.",
     )
-    return 0
 
 
 if __name__ == "__main__":

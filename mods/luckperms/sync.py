@@ -10,19 +10,27 @@ Places static configurations from `mods/luckperms/configs/` into `data/config/lu
 
 from __future__ import annotations
 
-import argparse
-import hashlib
 import json
-import os
 import re
 import sys
-import tempfile
 from pathlib import Path
-from typing import Any
 
 # Deterministic zero-walk path resolution (mods/luckperms/sync.py -> repo root)
 MOD_DIR = Path(__file__).resolve().parent
-REPO_ROOT = MOD_DIR.parent.parent
+MODS_DIR = MOD_DIR.parent
+if str(MODS_DIR) not in sys.path:
+    sys.path.insert(0, str(MODS_DIR))
+
+from _bridge import (  # noqa: E402
+    check_forbidden_entries,
+    collect_config_files,
+    run_sync_cli,
+    scan_mapping_for_secrets,
+    scan_text_for_secrets,
+    sync_static_file as bridge_sync_static_file,
+)
+
+REPO_ROOT = MODS_DIR.parent
 CONFIGS_DIR = MOD_DIR / "configs"
 DATA_DIR = REPO_ROOT / "data"
 TARGET_DIR = DATA_DIR / "config" / "luckperms"
@@ -50,44 +58,6 @@ FORBIDDEN_SUFFIXES: tuple[str, ...] = (
     ".db",
     ".jar",
 )
-
-SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("Discord Webhook URL", re.compile(r"https?://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d+/[\w-]+", re.IGNORECASE)),
-    ("Discord Bot Token", re.compile(r"[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}")),
-    ("Private Key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
-)
-
-SECRET_KEY_NAMES: frozenset[str] = frozenset({
-    "bottoken",
-    "webhookurl",
-    "password",
-    "secret",
-    "apikey",
-    "accesstoken",
-    "clientsecret",
-})
-
-
-def sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def scan_json_for_secrets(obj: Any, rel_path: str, key_path: str = "") -> list[str]:
-    errors: list[str] = []
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            current_path = f"{key_path}.{k}" if key_path else k
-            if k.lower() in SECRET_KEY_NAMES and isinstance(v, str) and v.strip():
-                errors.append(f"{rel_path}: non-empty secret key '{current_path}'")
-            errors.extend(scan_json_for_secrets(v, rel_path, current_path))
-    elif isinstance(obj, list):
-        for idx, item in enumerate(obj):
-            errors.extend(scan_json_for_secrets(item, rel_path, f"{key_path}[{idx}]"))
-    elif isinstance(obj, str):
-        for label, pattern in SECRET_PATTERNS:
-            if pattern.search(obj):
-                errors.append(f"{rel_path}: detected {label} at '{key_path}'")
-    return errors
 
 
 def strip_hocon_comments(text: str) -> str:
@@ -163,12 +133,8 @@ def extract_hocon_list(clean_text: str, key: str) -> list[str] | None:
 
 
 def validate_luckperms_conf(raw_text: str) -> list[str]:
-    """Validate secret guards and architectural invariants for `luckperms.conf`."""
+    """Validate architectural invariants for `luckperms.conf`."""
     errors: list[str] = []
-
-    for label, pattern in SECRET_PATTERNS:
-        if pattern.search(raw_text):
-            errors.append(f"luckperms.conf: detected {label}")
 
     clean = strip_hocon_comments(raw_text)
 
@@ -222,33 +188,20 @@ def validate_luckperms_conf(raw_text: str) -> list[str]:
 
 def validate_configs() -> dict[str, bytes]:
     """Validate all static config files in mods/luckperms/configs/ before placement."""
-    errors: list[str] = []
-
     if not CONFIGS_DIR.is_dir():
         raise RuntimeError(f"Missing configs directory: {CONFIGS_DIR}")
 
-    for forbidden in sorted(FORBIDDEN_NAMES):
-        candidate = CONFIGS_DIR / forbidden
-        if candidate.exists():
-            errors.append(
-                f"Forbidden file/directory present in configs/: {forbidden} "
-                "(live LuckPerms databases, runtime libs/translations, and storage directories must never be committed)"
-            )
-
-    for p in sorted(CONFIGS_DIR.rglob("*")):
-        rel = p.relative_to(CONFIGS_DIR).as_posix()
-        if p.is_file() and p.name.endswith(FORBIDDEN_SUFFIXES) and rel not in FORBIDDEN_NAMES:
-            errors.append(
-                f"Forbidden binary/database file present in configs/: {rel} "
-                "(database and JAR artifacts must remain exclusively in data/config/luckperms/)"
-            )
+    errors = check_forbidden_entries(
+        CONFIGS_DIR,
+        FORBIDDEN_NAMES,
+        FORBIDDEN_SUFFIXES,
+        suffix_label="binary/database",
+    )
+    config_files, collect_errors = collect_config_files(CONFIGS_DIR)
+    errors.extend(collect_errors)
 
     expected_files = set(STATIC_FILES)
-    actual_files = {
-        p.relative_to(CONFIGS_DIR).as_posix()
-        for p in CONFIGS_DIR.rglob("*")
-        if p.is_file()
-    }
+    actual_files = set(config_files.keys())
 
     missing = sorted(expected_files - actual_files)
     unexpected = sorted(actual_files - expected_files)
@@ -259,8 +212,7 @@ def validate_configs() -> dict[str, bytes]:
 
     loaded_bytes: dict[str, bytes] = {}
     for rel in sorted(actual_files & expected_files):
-        fpath = CONFIGS_DIR / rel
-        raw_bytes = fpath.read_bytes()
+        raw_bytes = config_files[rel].read_bytes()
         loaded_bytes[rel] = raw_bytes
         raw_text = raw_bytes.decode("utf-8")
 
@@ -271,7 +223,7 @@ def validate_configs() -> dict[str, bytes]:
                 errors.append(f"contexts.json: invalid JSON ({exc})")
                 continue
 
-            errors.extend(scan_json_for_secrets(ctx_data, rel))
+            errors.extend(scan_mapping_for_secrets(ctx_data, rel))
             if not isinstance(ctx_data, dict):
                 errors.append("contexts.json must be a JSON object")
             else:
@@ -282,6 +234,7 @@ def validate_configs() -> dict[str, bytes]:
                             "so LuckPerms context serialization remains valid on server startup."
                         )
         elif rel == "luckperms.conf":
+            errors.extend(scan_text_for_secrets(raw_text, rel))
             errors.extend(validate_luckperms_conf(raw_text))
 
     if errors:
@@ -290,85 +243,29 @@ def validate_configs() -> dict[str, bytes]:
     return loaded_bytes
 
 
-def atomic_write_bytes(target_path: Path, data: bytes, default_mode: int = 0o664) -> None:
-    """Write `data` to a temporary file in `target_path.parent`, preserve permissions/ownership, and atomically replace."""
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    if target_path.exists():
-        st = target_path.stat()
-        mode = st.st_mode & 0o777
-        uid, gid = st.st_uid, st.st_gid
-    else:
-        parent_st = target_path.parent.stat()
-        mode = default_mode
-        uid, gid = parent_st.st_uid, parent_st.st_gid
-
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{target_path.name}.",
-        suffix=".tmp",
-        dir=str(target_path.parent),
-    )
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        os.chmod(tmp_path, mode)
-        if hasattr(os, "geteuid") and os.geteuid() == 0:
-            os.chown(tmp_path, uid, gid)
-        os.replace(tmp_path, target_path)
-    except Exception:
-        if tmp_path.exists():
-            tmp_path.unlink(missing_ok=True)
-        raise
-
-
-def sync_static_file(rel: str, src_bytes: bytes, dry_run: bool) -> bool:
-    """Atomically copy `configs/<rel>` to `data/config/luckperms/<rel>` when SHA-256 differs."""
-    dst_path = TARGET_DIR / rel
-
-    if dst_path.exists() and sha256_bytes(dst_path.read_bytes()) == sha256_bytes(src_bytes):
-        return False
-
-    action = "Would update (static)" if dry_run else "Updated (static)"
-    print(f"  [{action}] {rel}")
-    if not dry_run:
-        atomic_write_bytes(dst_path, src_bytes)
-    return True
+def apply_configs(loaded_bytes: dict[str, bytes], dry_run: bool) -> tuple[int, int]:
+    """Place validated LuckPerms static files into `TARGET_DIR`."""
+    changed = 0
+    unchanged = 0
+    for rel in STATIC_FILES:
+        dst_path = TARGET_DIR / rel
+        if bridge_sync_static_file(dst_path, loaded_bytes[rel], dry_run=dry_run):
+            action = "Would update (static)" if dry_run else "Updated (static)"
+            print(f"  [{action}] {rel}")
+            changed += 1
+        else:
+            unchanged += 1
+    return changed, unchanged
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Validate and atomically place LuckPerms static configs into data/config/luckperms/."
+    return run_sync_cli(
+        "luckperms",
+        validate_configs,
+        apply_configs,
+        argv=argv,
+        description="Validate and atomically place LuckPerms static configs into data/config/luckperms/.",
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Validate and preview changes without modifying data/config/luckperms/.",
-    )
-    args = parser.parse_args(argv)
-
-    try:
-        loaded_bytes = validate_configs()
-    except Exception as exc:
-        print(f"[luckperms/sync.py] ERROR: {exc}", file=sys.stderr)
-        return 1
-
-    changed_count = 0
-    unchanged_count = 0
-
-    for rel in STATIC_FILES:
-        if sync_static_file(rel, loaded_bytes[rel], dry_run=args.dry_run):
-            changed_count += 1
-        else:
-            unchanged_count += 1
-
-    mode_label = "DRY-RUN" if args.dry_run else "APPLIED"
-    print(
-        f"[luckperms/sync.py] {mode_label}: {changed_count} changed, {unchanged_count} unchanged "
-        f"(total {changed_count + unchanged_count} files verified)."
-    )
-    return 0
 
 
 if __name__ == "__main__":

@@ -12,18 +12,28 @@ Never reads, copies, or modifies excluded backup archives or runtime directories
 
 from __future__ import annotations
 
-import argparse
-import hashlib
-import os
 import re
 import sys
-import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any
 
 MOD_DIR = Path(__file__).resolve().parent
-REPO_ROOT = MOD_DIR.parent.parent
+MODS_DIR = MOD_DIR.parent
+if str(MODS_DIR) not in sys.path:
+    sys.path.insert(0, str(MODS_DIR))
+
+from _bridge import (  # noqa: E402
+    check_forbidden_entries,
+    collect_config_files,
+    is_strict_int,
+    run_sync_cli,
+    scan_mapping_for_secrets,
+    scan_text_for_secrets,
+    sync_static_file as bridge_sync_static_file,
+)
+
+REPO_ROOT = MODS_DIR.parent
 CONFIGS_DIR = MOD_DIR / "configs"
 DATA_DIR = REPO_ROOT / "data"
 
@@ -50,22 +60,6 @@ FORBIDDEN_SUFFIXES: tuple[str, ...] = (
     ".jar",
 )
 
-SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("Discord Webhook URL", re.compile(r"https?://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d+/[\w-]+", re.IGNORECASE)),
-    ("Discord Bot Token", re.compile(r"[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}")),
-    ("Private Key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
-)
-
-SECRET_KEY_NAMES: frozenset[str] = frozenset({
-    "bottoken",
-    "webhookurl",
-    "password",
-    "secret",
-    "apikey",
-    "accesstoken",
-    "clientsecret",
-})
-
 VALID_BACKUP_TYPES: frozenset[str] = frozenset({
     "FULL_BACKUPS",
     "MODIFIED_SINCE_LAST",
@@ -73,39 +67,6 @@ VALID_BACKUP_TYPES: frozenset[str] = frozenset({
 })
 
 MAX_DISK_SIZE_RE = re.compile(r"^\d+\s+(B|KB|MB|GB|TB)$")
-
-
-def sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def is_strict_int(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def scan_toml_for_secrets(obj: Any, rel_path: str, key_path: str = "") -> list[str]:
-    """Recursively scan parsed TOML keys and string values for secrets or credentials."""
-    errors: list[str] = []
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            current_path = f"{key_path}.{k}" if key_path else k
-            if k.lower() in SECRET_KEY_NAMES and isinstance(v, str) and v.strip():
-                errors.append(
-                    f"{rel_path}: non-empty secret key '{current_path}' "
-                    "(credentials and tokens must never be committed to static mod configs)"
-                )
-            errors.extend(scan_toml_for_secrets(v, rel_path, current_path))
-    elif isinstance(obj, list):
-        for idx, item in enumerate(obj):
-            errors.extend(scan_toml_for_secrets(item, rel_path, f"{key_path}[{idx}]"))
-    elif isinstance(obj, str):
-        for label, pattern in SECRET_PATTERNS:
-            if pattern.search(obj):
-                errors.append(
-                    f"{rel_path}: detected {label} at '{key_path}' "
-                    "(secrets must never be committed to static mod configs)"
-                )
-    return errors
 
 
 def validate_common_toml(data: dict[str, Any]) -> list[str]:
@@ -176,33 +137,15 @@ def validate_server_toml(data: dict[str, Any]) -> list[str]:
 
 def validate_configs() -> dict[str, bytes]:
     """Validate all static config files in `mods/simplebackups/configs/` before placement."""
-    errors: list[str] = []
-
     if not CONFIGS_DIR.is_dir():
         raise RuntimeError(f"Missing configs directory: {CONFIGS_DIR}")
 
-    for forbidden in sorted(FORBIDDEN_NAMES):
-        candidate = CONFIGS_DIR / forbidden
-        if candidate.exists():
-            errors.append(
-                f"Forbidden file/directory present in configs/: {forbidden} "
-                "(live backup archives, logs, and world state must remain exclusively in data/ and never be committed)"
-            )
-
-    for p in sorted(CONFIGS_DIR.rglob("*")):
-        rel = p.relative_to(CONFIGS_DIR).as_posix()
-        if p.is_file() and p.name.endswith(FORBIDDEN_SUFFIXES) and rel not in FORBIDDEN_NAMES:
-            errors.append(
-                f"Forbidden archive/runtime file present in configs/: {rel} "
-                "(backup archives, locks, databases, and JAR artifacts must remain exclusively in data/)"
-            )
+    errors = check_forbidden_entries(CONFIGS_DIR, FORBIDDEN_NAMES, FORBIDDEN_SUFFIXES)
+    config_files, collect_errors = collect_config_files(CONFIGS_DIR)
+    errors.extend(collect_errors)
 
     expected_files = set(STATIC_FILES.keys())
-    actual_files = {
-        p.relative_to(CONFIGS_DIR).as_posix()
-        for p in CONFIGS_DIR.rglob("*")
-        if p.is_file()
-    }
+    actual_files = set(config_files.keys())
 
     missing = sorted(expected_files - actual_files)
     unexpected = sorted(actual_files - expected_files)
@@ -213,17 +156,11 @@ def validate_configs() -> dict[str, bytes]:
 
     loaded_bytes: dict[str, bytes] = {}
     for rel in sorted(actual_files & expected_files):
-        fpath = CONFIGS_DIR / rel
-        raw_bytes = fpath.read_bytes()
+        raw_bytes = config_files[rel].read_bytes()
         loaded_bytes[rel] = raw_bytes
         raw_text = raw_bytes.decode("utf-8")
 
-        for label, pattern in SECRET_PATTERNS:
-            if pattern.search(raw_text):
-                errors.append(
-                    f"{rel}: detected {label} "
-                    "(secrets must never be committed to static mod configs)"
-                )
+        errors.extend(scan_text_for_secrets(raw_text, rel))
 
         try:
             parsed = tomllib.loads(raw_text)
@@ -231,7 +168,7 @@ def validate_configs() -> dict[str, bytes]:
             errors.append(f"{rel}: invalid TOML ({exc})")
             continue
 
-        errors.extend(scan_toml_for_secrets(parsed, rel))
+        errors.extend(scan_mapping_for_secrets(parsed, rel))
 
         if rel == "simplebackups-common.toml":
             errors.extend(validate_common_toml(parsed))
@@ -244,85 +181,29 @@ def validate_configs() -> dict[str, bytes]:
     return loaded_bytes
 
 
-def atomic_write_bytes(target_path: Path, data: bytes, default_mode: int = 0o664) -> None:
-    """Write `data` to a temporary file in `target_path.parent`, preserve permissions/ownership, and atomically replace."""
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    if target_path.exists():
-        st = target_path.stat()
-        mode = st.st_mode & 0o777
-        uid, gid = st.st_uid, st.st_gid
-    else:
-        parent_st = target_path.parent.stat()
-        mode = default_mode
-        uid, gid = parent_st.st_uid, parent_st.st_gid
-
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{target_path.name}.",
-        suffix=".tmp",
-        dir=str(target_path.parent),
-    )
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        os.chmod(tmp_path, mode)
-        if hasattr(os, "geteuid") and os.geteuid() == 0:
-            os.chown(tmp_path, uid, gid)
-        os.replace(tmp_path, target_path)
-    except Exception:
-        if tmp_path.exists():
-            tmp_path.unlink(missing_ok=True)
-        raise
-
-
-def sync_static_file(rel: str, src_bytes: bytes, dry_run: bool) -> bool:
-    """Atomically copy `configs/<rel>` to its target path under `DATA_DIR` when SHA-256 differs."""
-    dst_path = DATA_DIR.joinpath(*STATIC_FILES[rel])
-
-    if dst_path.exists() and sha256_bytes(dst_path.read_bytes()) == sha256_bytes(src_bytes):
-        return False
-
-    action = "Would update (static)" if dry_run else "Updated (static)"
-    print(f"  [{action}] {rel} -> {dst_path.relative_to(DATA_DIR).as_posix()}")
-    if not dry_run:
-        atomic_write_bytes(dst_path, src_bytes)
-    return True
+def apply_configs(loaded_bytes: dict[str, bytes], dry_run: bool) -> tuple[int, int]:
+    """Place validated Simple Backups static files into `DATA_DIR`."""
+    changed = 0
+    unchanged = 0
+    for rel in STATIC_FILES:
+        dst_path = DATA_DIR.joinpath(*STATIC_FILES[rel])
+        if bridge_sync_static_file(dst_path, loaded_bytes[rel], dry_run=dry_run):
+            action = "Would update (static)" if dry_run else "Updated (static)"
+            print(f"  [{action}] {rel} -> {dst_path.relative_to(DATA_DIR).as_posix()}")
+            changed += 1
+        else:
+            unchanged += 1
+    return changed, unchanged
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Validate and atomically place Simple Backups static configs into data/."
+    return run_sync_cli(
+        "simplebackups",
+        validate_configs,
+        apply_configs,
+        argv=argv,
+        description="Validate and atomically place Simple Backups static configs into data/.",
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Validate and preview changes without modifying data/.",
-    )
-    args = parser.parse_args(argv)
-
-    try:
-        loaded_bytes = validate_configs()
-    except Exception as exc:
-        print(f"[simplebackups/sync.py] ERROR: {exc}", file=sys.stderr)
-        return 1
-
-    changed_count = 0
-    unchanged_count = 0
-
-    for rel in STATIC_FILES:
-        if sync_static_file(rel, loaded_bytes[rel], dry_run=args.dry_run):
-            changed_count += 1
-        else:
-            unchanged_count += 1
-
-    mode_label = "DRY-RUN" if args.dry_run else "APPLIED"
-    print(
-        f"[simplebackups/sync.py] {mode_label}: {changed_count} changed, {unchanged_count} unchanged "
-        f"(total {changed_count + unchanged_count} files verified)."
-    )
-    return 0
 
 
 if __name__ == "__main__":
