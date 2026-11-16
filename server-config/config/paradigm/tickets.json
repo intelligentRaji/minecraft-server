@@ -1,0 +1,118 @@
+{
+  "enabled": {
+    "description": "Enable or disable the ticket system, its /ticket and /tickets commands and the dashboard section.",
+    "value": true
+  },
+  "staffNotifyEnabled": {
+    "description": "Notify online staff in chat when a ticket is created or a player replies.",
+    "value": true
+  },
+  "creatorNotifyEnabled": {
+    "description": "Notify the ticket creator in chat when staff reply or the ticket is resolved, closed or reopened.",
+    "value": true
+  },
+  "maxOpenTicketsPerPlayer": {
+    "description": "Maximum number of tickets a player may have in a non-resolved, non-closed state. Set to 0 for unlimited.",
+    "value": 3
+  },
+  "createCooldownSeconds": {
+    "description": "Minimum seconds between ticket creations by the same player. Measured from their most recent ticket regardless of its status, so closing a ticket does not bypass the cooldown. Set to 0 to disable.",
+    "value": 120
+  },
+  "maxMessageLength": {
+    "description": "Maximum length of a single ticket message. Longer messages are rejected with a localized error.",
+    "value": 512
+  },
+  "maxSubjectLength": {
+    "description": "Maximum length of the subject derived from the first line of a new ticket.",
+    "value": 64
+  },
+  "allowPlayerUrgentPriority": {
+    "description": "Allow players without the paradigm.ticket.priority.urgent permission to set URGENT priority.",
+    "value": false
+  },
+  "playerReopenWindowHours": {
+    "description": "How many hours after a ticket is resolved the creator may reopen it themselves. Closed tickets always require staff. Set to 0 to never allow player reopen.",
+    "value": 48
+  },
+  "autoCloseResolvedAfterHours": {
+    "description": "Automatically close RESOLVED tickets after this many hours without activity. 0 disables auto-close.",
+    "value": 0
+  },
+  "autoCloseWaitingPlayerAfterDays": {
+    "description": "Automatically close WAITING_PLAYER tickets after this many days without activity. 0 disables auto-close.",
+    "value": 0
+  },
+  "autoCloseSweepIntervalMinutes": {
+    "description": "How often the auto-close sweeper runs. Only scheduled when at least one auto-close threshold is above 0.",
+    "value": 30
+  },
+  "crossServerNotifyPollSeconds": {
+    "description": "How often this server polls the shared ticket event table so staff here are notified about tickets and replies that originated on another server. Requires a shared SQL provider; on JSON storage notifications are local to this server only. Set to 0 to disable polling.",
+    "value": 5
+  },
+  "listPageSize": {
+    "description": "How many tickets are shown per page by /ticket list and /tickets.",
+    "value": 8
+  },
+  "threadPreviewMessages": {
+    "description": "How many of the most recent messages /ticket view shows inline.",
+    "value": 5
+  },
+  "categories": [
+    {
+      "id": "general",
+      "displayName": "General",
+      "description": "Anything that does not fit another category.",
+      "enabled": true,
+      "defaultPriority": "NORMAL",
+      "permission": "",
+      "staffPermission": ""
+    },
+    {
+      "id": "bug",
+      "displayName": "Bug Report",
+      "description": "Something on the server is not working as intended.",
+      "enabled": true,
+      "defaultPriority": "NORMAL",
+      "permission": "",
+      "staffPermission": ""
+    },
+    {
+      "id": "player_report",
+      "displayName": "Player Report",
+      "description": "Report another player's behaviour.",
+      "enabled": true,
+      "defaultPriority": "HIGH",
+      "permission": "",
+      "staffPermission": ""
+    },
+    {
+      "id": "lost_items",
+      "displayName": "Lost Items",
+      "description": "Items lost to a crash, bug or rollback.",
+      "enabled": true,
+      "defaultPriority": "NORMAL",
+      "permission": "",
+      "staffPermission": ""
+    },
+    {
+      "id": "technical",
+      "displayName": "Technical",
+      "description": "Connection, performance or account problems.",
+      "enabled": true,
+      "defaultPriority": "NORMAL",
+      "permission": "",
+      "staffPermission": ""
+    },
+    {
+      "id": "other",
+      "displayName": "Other",
+      "description": "Anything else you would like staff to look at.",
+      "enabled": true,
+      "defaultPriority": "LOW",
+      "permission": "",
+      "staffPermission": ""
+    }
+  ]
+}

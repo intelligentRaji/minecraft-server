@@ -56,6 +56,7 @@ Confirm the server reports:
 ```text
 [Server thread/INFO] [minecraft/DedicatedServer]: Done (...s)! For help, type "help"
 ```
+If the newly installed mods generated new configuration files in `data/config/` or `data/world/serverconfig/`, activate the **`minecraft-config-sync`** skill to pull the safe configs into `server-config/`.
 
 ---
 

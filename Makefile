@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs status sync sync-dry backup progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
+.PHONY: help up down restart logs status sync sync-dry backup config-pull config-pull-dry config-push config-push-dry config-diff lp-snapshot progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
@@ -29,6 +29,30 @@ sync-dry: ## Preview modpack synchronization without modifying files
 
 backup: ## Upload mods to Google Drive under minecraft-server/mods/
 	python3 .agents/skills/minecraft-mod-manager/scripts/upload_to_gdrive.py
+
+CONFIG_SYNC_DIR := .agents/plugins/minecraft-manager/skills/minecraft-config-sync/scripts
+LP_SNAPSHOT := python3 .agents/plugins/minecraft-manager/skills/minecraft-permission-manager/scripts/lp_snapshot.py
+RCON_CLI := python3 .agents/plugins/minecraft-manager/skills/minecraft-rcon/scripts/rcon.py
+
+config-pull: ## Pull allowlisted server configs from data/ into server-config/
+	python3 $(CONFIG_SYNC_DIR)/pull_configs.py
+
+config-pull-dry: ## Preview config pull without modifying files
+	python3 $(CONFIG_SYNC_DIR)/pull_configs.py --dry-run
+
+config-push: ## Apply versioned configs from server-config/ into data/
+	python3 $(CONFIG_SYNC_DIR)/push_configs.py
+
+config-push-dry: ## Preview config push without modifying files
+	python3 $(CONFIG_SYNC_DIR)/push_configs.py --dry-run
+
+config-diff: ## Show unified diff between server-config/ and data/
+	python3 $(CONFIG_SYNC_DIR)/diff_configs.py
+
+lp-snapshot: ## Export LuckPerms snapshot via RCON to server-config/
+	$(LP_SNAPSHOT) --clean
+	$(RCON_CLI) "lp export snapshot"
+	$(LP_SNAPSHOT)
 
 progress: chunky-progress ## Alias for chunky-progress
 

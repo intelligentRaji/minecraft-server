@@ -1,0 +1,59 @@
+{
+  "banScreenEnabled": {
+    "description": "Use Paradigm's formatted ban rejection screen.",
+    "value": true
+  },
+  "banScreenLines": {
+    "description": "Formatted lines shown when Paradigm rejects a banned connection.",
+    "value": [
+      "<bold><color:red>You are banned</color></bold>",
+      "",
+      "<color:gray>Reason</color>",
+      "{reason}",
+      "",
+      "<color:gray>Punished by</color>",
+      "{actor}",
+      "",
+      "<color:gray>Ban ID</color>",
+      "{punishment_id}",
+      "",
+      "<color:gray>Expires</color>",
+      "{expiry}",
+      "",
+      "<color:aqua>{appeal_url}</color>"
+    ]
+  },
+  "appealUrl": {
+    "description": "Appeal URL available as {appeal_url}.",
+    "value": "https://example.invalid/appeal/{punishment_id}"
+  },
+  "cacheRefreshSeconds": {
+    "description": "How often SQL-backed servers refresh active punishments from storage.",
+    "value": 30
+  },
+  "warnEscalationEnabled": {
+    "description": "Automatically create a temporary ban when a player reaches a configured warning threshold.",
+    "value": false
+  },
+  "warnEscalationReason": {
+    "description": "Reason recorded on escalation bans. Supports {count}, {window}, {duration} and {player}.",
+    "value": "Automatic escalation: {count} warnings within {window}."
+  },
+  "warnEscalationRules": {
+    "description": "Escalation thresholds. Each rule counts non-revoked warnings inside its window and applies its ban duration.",
+    "value": [
+      {
+        "warnings": 3,
+        "window": "7d",
+        "banDuration": "1h",
+        "reason": ""
+      },
+      {
+        "warnings": 5,
+        "window": "30d",
+        "banDuration": "1d",
+        "reason": ""
+      }
+    ]
+  }
+}

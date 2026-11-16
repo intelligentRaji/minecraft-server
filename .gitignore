@@ -11,6 +11,7 @@
 
 # Environment overrides
 .env
+.env.*
 
 # WireGuard private keys and client config
 /wireguard/
@@ -25,4 +26,32 @@ __pycache__/
 **/.obsidian/plugins/*/binaries/
 **/.obsidian-hybrid-search.db*
 **/.obsidian/plugins/termy/agent-context/obsidian-context.json
+
+# Server config safety guards (secrets, DBs, downloaded libs, caches, player state)
+server-config/**/discord.json
+server-config/**/storage.json
+server-config/**/luckperms.conf
+server-config/**/libs/
+server-config/**/data/
+server-config/**/cache/
+server-config/**/tmp/
+server-config/**/translations/
+server-config/**/banned-ips.json
+server-config/**/banned-players.json
+server-config/**/usercache.json
+server-config/**/usernamecache.json
+server-config/**/whitelist.json
+server-config/**/ops.json
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.mv.db
+*.trace.db
+*.sqlite
+*.sqlite3
+*.gz
+*.zip
+*.tar
+*.jfr
 

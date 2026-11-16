@@ -1,0 +1,30 @@
+{
+  "enabled": {
+    "description": "Enable or disable the AFK module, its /afk command and the {afk} placeholders.",
+    "value": true
+  },
+  "afkTimeoutSeconds": {
+    "description": "Inactivity in seconds before a player is automatically marked AFK. Set to 0 to only allow manual /afk.",
+    "value": 300
+  },
+  "activityCheckIntervalSeconds": {
+    "description": "How often Paradigm samples player positions to detect movement and inactivity.",
+    "value": 5
+  },
+  "broadcastEnabled": {
+    "description": "Broadcast AFK enter/leave messages to all online players.",
+    "value": true
+  },
+  "enterMessage": {
+    "description": "Broadcast shown when a player becomes AFK. Supports Paradigm placeholders.",
+    "value": "<color:gray>{player} is now AFK.</color>"
+  },
+  "leaveMessage": {
+    "description": "Broadcast shown when a player stops being AFK. Supports Paradigm placeholders.",
+    "value": "<color:gray>{player} is no longer AFK.</color>"
+  },
+  "afkTag": {
+    "description": "Value substituted into the {afk} placeholder while a player is AFK.",
+    "value": "[AFK]"
+  }
+}
