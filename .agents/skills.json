@@ -11,6 +11,9 @@
     },
     {
       "path": "mods/chunky/.agents/skills"
+    },
+    {
+      "path": "mods/modernfix/.agents/skills"
     }
   ]
 }
