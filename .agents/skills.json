@@ -20,6 +20,9 @@
     },
     {
       "path": "mods/skilltree/.agents/skills"
+    },
+    {
+      "path": "mods/corecommands/.agents/skills"
     }
   ]
 }
