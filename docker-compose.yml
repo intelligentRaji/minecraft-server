@@ -21,6 +21,9 @@ services:
       ONLINE_MODE: "false"
     volumes:
       - ./data:/data
+      - ./mods:/mods:ro
+      - ./sync_mod_configurations.py:/sync_mod_configurations.py:ro
+    entrypoint: ["/bin/bash", "-c", "python3 /sync_mod_configurations.py && exec /start"]
     tty: true
     stdin_open: true
 
