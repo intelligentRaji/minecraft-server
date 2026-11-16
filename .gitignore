@@ -30,7 +30,6 @@ __pycache__/
 # Server config safety guards (secrets, DBs, downloaded libs, caches, player state)
 mods/**/configs/**/discord.json
 mods/**/configs/**/storage.json
-mods/**/configs/**/luckperms.conf
 mods/**/configs/**/libs/
 mods/**/configs/**/data/
 mods/**/configs/**/cache/
