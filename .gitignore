@@ -28,20 +28,20 @@ __pycache__/
 **/.obsidian/plugins/termy/agent-context/obsidian-context.json
 
 # Server config safety guards (secrets, DBs, downloaded libs, caches, player state)
-server-config/**/discord.json
-server-config/**/storage.json
-server-config/**/luckperms.conf
-server-config/**/libs/
-server-config/**/data/
-server-config/**/cache/
-server-config/**/tmp/
-server-config/**/translations/
-server-config/**/banned-ips.json
-server-config/**/banned-players.json
-server-config/**/usercache.json
-server-config/**/usernamecache.json
-server-config/**/whitelist.json
-server-config/**/ops.json
+mods/**/configs/**/discord.json
+mods/**/configs/**/storage.json
+mods/**/configs/**/luckperms.conf
+mods/**/configs/**/libs/
+mods/**/configs/**/data/
+mods/**/configs/**/cache/
+mods/**/configs/**/tmp/
+mods/**/configs/**/translations/
+mods/**/configs/**/banned-ips.json
+mods/**/configs/**/banned-players.json
+mods/**/configs/**/usercache.json
+mods/**/configs/**/usernamecache.json
+mods/**/configs/**/whitelist.json
+mods/**/configs/**/ops.json
 *.db
 *.db-wal
 *.db-shm

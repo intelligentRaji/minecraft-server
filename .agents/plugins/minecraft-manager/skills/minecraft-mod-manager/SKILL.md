@@ -56,11 +56,21 @@ Confirm the server reports:
 ```text
 [Server thread/INFO] [minecraft/DedicatedServer]: Done (...s)! For help, type "help"
 ```
-If the newly installed mods generated new configuration files in `data/config/` or `data/world/serverconfig/`, activate the **`minecraft-config-sync`** skill to pull the safe configs into `server-config/`.
+If the newly installed mods generated new configuration files in `data/config/` or `data/world/serverconfig/`, activate **`minecraft-mod-harness-manager`** in Step 5 to create their `mods/<slug>/` vertical slices.
 
 ---
 
-### Step 5: Synchronize with Google Drive (Final Step)
+### Step 5: Create or Remove Mod Config Harness
+After adding or removing a server mod (`server-client` or `server-only`) in `modpack/`:
+
+1. **After Installing a Server Mod:**
+   Activate the **`minecraft-mod-harness-manager`** skill to audit unmapped config files (`audit_unmapped.py`), scaffold `mods/<slug>/` (`create_mod_harness.py <slug>`), pull safe configs from `data/`, and register `mods/<slug>/.agents/skills` in `.agents/skills.json`.
+2. **After Removing a Server Mod:**
+   Activate the **`minecraft-mod-harness-manager`** skill (`remove_mod_harness.py <slug>`) to delete `mods/<slug>/` and unregister its skill from `.agents/skills.json`.
+
+---
+
+### Step 6: Synchronize with Google Drive (Final Step)
 After any mod additions, upgrades, or deletions are verified locally:
 1. **Adding / Updating Mods:** Ask the user:
    > *"Would you like me to upload the updated mods to your Google Drive (`minecraft-server/mods/`) for safe backup and sharing?"*
@@ -71,7 +81,7 @@ Upon user approval, activate the **`minecraft-gdrive-sync`** skill to perform th
 
 ---
 
-### Step 6: Troubleshooting Startup Errors
+### Step 7: Troubleshooting Startup Errors
 1. **Missing Dependency Range:** Check logs for `Missing or unsupported mandatory dependencies: Mod ID: '<id>'`. Query and download the missing library using Steps 1–3.
 2. **Headless Crash:** If a `NoClassDefFoundError` or rendering error appears, ensure no client-side UI mods were placed into `server-client/` or `server-only/`. Move them to `client-only/` and re-run:
    ```bash

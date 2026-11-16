@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs status sync sync-dry backup config-pull config-pull-dry config-push config-push-dry config-diff lp-snapshot progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
+.PHONY: help up down restart logs status sync sync-dry backup config-pull config-pull-dry config-push config-push-dry config-diff config-unmapped lp-snapshot progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
@@ -6,7 +6,7 @@ help: ## Show this help message
 	@echo "Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
-up: ## Start Minecraft server in background
+up: config-push ## Sync all mod configs into data/ and start Minecraft server
 	docker compose up -d
 
 down: ## Stop Minecraft server
@@ -30,26 +30,38 @@ sync-dry: ## Preview modpack synchronization without modifying files
 backup: ## Upload mods to Google Drive under minecraft-server/mods/
 	python3 .agents/skills/minecraft-mod-manager/scripts/upload_to_gdrive.py
 
-CONFIG_SYNC_DIR := .agents/plugins/minecraft-manager/skills/minecraft-config-sync/scripts
 LP_SNAPSHOT := python3 .agents/plugins/minecraft-manager/skills/minecraft-permission-manager/scripts/lp_snapshot.py
 RCON_CLI := python3 .agents/plugins/minecraft-manager/skills/minecraft-rcon/scripts/rcon.py
 
-config-pull: ## Pull allowlisted server configs from data/ into server-config/
-	python3 $(CONFIG_SYNC_DIR)/pull_configs.py
+config-pull: ## Pull runtime configs from data/ into each mods/<slug>/configs/
+	@for script in mods/*/.agents/skills/*/scripts/sync_config.py; do \
+		python3 "$$script" pull || exit 1; \
+	done
 
-config-pull-dry: ## Preview config pull without modifying files
-	python3 $(CONFIG_SYNC_DIR)/pull_configs.py --dry-run
+config-pull-dry: ## Preview pulling runtime configs from data/ into mods/
+	@for script in mods/*/.agents/skills/*/scripts/sync_config.py; do \
+		python3 "$$script" pull --dry-run || exit 1; \
+	done
 
-config-push: ## Apply versioned configs from server-config/ into data/
-	python3 $(CONFIG_SYNC_DIR)/push_configs.py
+config-push: ## Push all mods/*/configs/ into data/
+	@for script in mods/*/.agents/skills/*/scripts/sync_config.py; do \
+		python3 "$$script" push || exit 1; \
+	done
 
-config-push-dry: ## Preview config push without modifying files
-	python3 $(CONFIG_SYNC_DIR)/push_configs.py --dry-run
+config-push-dry: ## Preview pushing all mods/*/configs/ into data/
+	@for script in mods/*/.agents/skills/*/scripts/sync_config.py; do \
+		python3 "$$script" push --dry-run || exit 1; \
+	done
 
-config-diff: ## Show unified diff between server-config/ and data/
-	python3 $(CONFIG_SYNC_DIR)/diff_configs.py
+config-diff: ## Show unified diff across all mods/*/configs/ vs data/
+	@for script in mods/*/.agents/skills/*/scripts/sync_config.py; do \
+		python3 "$$script" diff || exit 1; \
+	done
 
-lp-snapshot: ## Export LuckPerms snapshot via RCON to server-config/
+config-unmapped: ## List config files in data/ not yet claimed by a mods/<slug>/ folder
+	python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-harness-manager/scripts/audit_unmapped.py
+
+lp-snapshot: ## Export LuckPerms snapshot via RCON to mods/luckperms/configs/
 	$(LP_SNAPSHOT) --clean
 	$(RCON_CLI) "lp export snapshot"
 	$(LP_SNAPSHOT)

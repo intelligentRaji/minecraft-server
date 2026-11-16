@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract and sanitize a LuckPerms export archive into server-config/."""
+"""Extract and sanitize a LuckPerms export archive into mods/luckperms/configs/."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def find_repo_root(start: Path | None = None) -> Path:
 REPO_ROOT = find_repo_root()
 LP_DATA_DIR = REPO_ROOT / "data" / "config" / "luckperms"
 LP_SNAPSHOT_OUT = (
-    REPO_ROOT / "server-config" / "config" / "luckperms" / "luckperms-snapshot.json"
+    REPO_ROOT / "mods" / "luckperms" / "configs" / "luckperms-snapshot.json"
 )
 
 
@@ -99,7 +99,7 @@ def extract_snapshot(archive_path: Path, *, keep_users: bool, dry_run: bool) -> 
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
-        description="Clean or extract a LuckPerms export archive into server-config/config/luckperms/luckperms-snapshot.json."
+        description="Clean or extract a LuckPerms export archive into mods/luckperms/configs/luckperms-snapshot.json."
     )
     parser.add_argument(
         "--clean",
