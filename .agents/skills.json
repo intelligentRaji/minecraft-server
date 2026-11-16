@@ -17,6 +17,9 @@
     },
     {
       "path": "mods/ferritecore/.agents/skills"
+    },
+    {
+      "path": "mods/skilltree/.agents/skills"
     }
   ]
 }
