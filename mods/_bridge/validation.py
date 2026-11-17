@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import configparser
 import json
 import tomllib
 from collections.abc import Callable, Iterable, Mapping
@@ -17,7 +18,7 @@ from .secrets import scan_mapping_for_secrets, scan_text_for_secrets
 
 
 def _parse_static_config(rel: str, raw_text: str) -> tuple[Any, str | None]:
-    """Parse `.toml` or `.json` static config text; return `(parsed, error)`."""
+    """Parse `.toml`, `.json`, or `.ini` static config text; return `(parsed, error)`."""
     lower = rel.lower()
     if lower.endswith(".toml"):
         try:
@@ -29,6 +30,19 @@ def _parse_static_config(rel: str, raw_text: str) -> tuple[Any, str | None]:
             return json.loads(raw_text), None
         except Exception as exc:
             return None, f"{rel}: invalid JSON ({exc})"
+    if lower.endswith(".ini"):
+        try:
+            parser = configparser.ConfigParser()
+            parser.optionxform = str
+            parser.read_string(raw_text)
+            parsed_ini: dict[str, dict[str, str]] = {}
+            if parser.defaults():
+                parsed_ini["DEFAULT"] = dict(parser.defaults())
+            for sec in parser.sections():
+                parsed_ini[sec] = dict(parser.items(sec))
+            return parsed_ini, None
+        except Exception as exc:
+            return None, f"{rel}: invalid INI ({exc})"
     return raw_text, None
 
 

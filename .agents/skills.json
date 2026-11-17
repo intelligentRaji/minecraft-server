@@ -26,6 +26,51 @@
     },
     {
       "path": "mods/farmersdelight/.agents/skills"
+    },
+    {
+      "path": "mods/attributefix/.agents/skills"
+    },
+    {
+      "path": "mods/curios/.agents/skills"
+    },
+    {
+      "path": "mods/biomesoplenty/.agents/skills"
+    },
+    {
+      "path": "mods/botania/.agents/skills"
+    },
+    {
+      "path": "mods/create/.agents/skills"
+    },
+    {
+      "path": "mods/dynamictrees/.agents/skills"
+    },
+    {
+      "path": "mods/jei/.agents/skills"
+    },
+    {
+      "path": "mods/jeresources/.agents/skills"
+    },
+    {
+      "path": "mods/everycomp/.agents/skills"
+    },
+    {
+      "path": "mods/moonlight/.agents/skills"
+    },
+    {
+      "path": "mods/sliceanddice/.agents/skills"
+    },
+    {
+      "path": "mods/terrablender/.agents/skills"
+    },
+    {
+      "path": "mods/vanillabackport/.agents/skills"
+    },
+    {
+      "path": "mods/twilightforest/.agents/skills"
+    },
+    {
+      "path": "mods/jade/.agents/skills"
     }
   ]
 }
