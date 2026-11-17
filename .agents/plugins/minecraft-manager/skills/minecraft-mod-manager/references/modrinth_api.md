@@ -59,8 +59,8 @@ Use the bundled script instead of raw HTTP calls when possible:
 
 ```bash
 # Query mod metadata:
-python3 .agents/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug>
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug>
 
 # Query and directly download to target category folder:
-python3 .agents/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug> --download-to modpack/server-client
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug> --download-to server/modpack/server-client
 ```

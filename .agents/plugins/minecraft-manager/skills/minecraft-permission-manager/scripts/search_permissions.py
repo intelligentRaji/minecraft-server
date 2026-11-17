@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Search discovered Paradigm/LuckPerms permission nodes in data/config/paradigm/discovered_permissions.json."""
+"""Search discovered Paradigm/LuckPerms permission nodes in server/data/config/paradigm/discovered_permissions.json."""
 
 from __future__ import annotations
 
@@ -9,18 +9,18 @@ from pathlib import Path
 import sys
 
 
-def find_repo_root(start: Path) -> Path:
-    """Walk upward from start to locate the server root (containing docker-compose.yml)."""
+def find_server_root(start: Path) -> Path:
+    """Walk upward from start to locate the server directory."""
     for candidate in (start, *start.parents):
-        if (candidate / "server" / "docker-compose.yml").is_file():
+        if (candidate / "docker-compose.yml").is_file() and (candidate / "server" / "mods").is_dir():
             return candidate / "server"
-        if (candidate / "docker-compose.yml").is_file():
+        if (candidate / "sync_mod_configurations.py").is_file() and (candidate / "mods").is_dir():
             return candidate
-    raise RuntimeError(f"Could not locate server root (docker-compose.yml) above {start}")
+    raise RuntimeError(f"Could not locate server directory above {start}")
 
 
 PERMS_FILE = (
-    find_repo_root(Path(__file__).resolve().parent)
+    find_server_root(Path(__file__).resolve().parent)
     / "data"
     / "config"
     / "paradigm"

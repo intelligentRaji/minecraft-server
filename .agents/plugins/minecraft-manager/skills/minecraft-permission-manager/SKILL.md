@@ -34,19 +34,19 @@ Activate the **`minecraft-rcon`** skill to run the appropriate LuckPerms (`lp`) 
   - `lp group <group> permission unset <node>` *(remove node)*
 - **Audit current LuckPerms permissions:**
   1. Run `lp export <name>` via **`minecraft-rcon`**.
-  2. Inspect `data/config/luckperms/<name>.json.gz` (using `zcat`), then remove the temporary export file.
+  2. Inspect `server/data/config/luckperms/<name>.json.gz` (using `zcat`), then remove the temporary export file.
 
 ---
 
-### Step 3: Export Versioned LuckPerms Snapshot to `mods/luckperms/configs/`
-To save a clean, Git-friendly snapshot of LuckPerms groups, tracks, and permissions (`users` stripped by default) into `mods/luckperms/configs/luckperms-snapshot.json`:
+### Step 3: Export Versioned LuckPerms Snapshot to `server/mods/luckperms/configs/`
+To save a clean, Git-friendly snapshot of LuckPerms groups, tracks, and permissions (`users` stripped by default) into `server/mods/luckperms/configs/luckperms-snapshot.json`:
 
 1. Remove any stale export archive first (LuckPerms refuses to overwrite an existing `.json.gz`):
    ```bash
    python3 .agents/plugins/minecraft-manager/skills/minecraft-permission-manager/scripts/lp_snapshot.py --clean
    ```
 2. Activate **`minecraft-rcon`** to run `lp export snapshot`.
-3. Extract and sanitize the snapshot into `mods/luckperms/configs/`:
+3. Extract and sanitize the snapshot into `server/mods/luckperms/configs/`:
    ```bash
    python3 .agents/plugins/minecraft-manager/skills/minecraft-permission-manager/scripts/lp_snapshot.py
    ```

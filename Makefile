@@ -1,6 +1,6 @@
-.PHONY: help up up-proxy down restart logs modsync-logs status sync sync-dry backup lp-snapshot test client-build progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
+.PHONY: help up down restart logs modsync-logs status sync sync-dry backup lp-snapshot test client-build progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
 
-COMPOSE := docker compose -f server/docker-compose.yml
+COMPOSE := docker compose
 SYNC_MODS := python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py
 SYNC_DRIVE := python3 .agents/plugins/minecraft-manager/skills/minecraft-gdrive-sync/scripts/sync_mods_drive.py
 LP_SNAPSHOT := python3 .agents/plugins/minecraft-manager/skills/minecraft-permission-manager/scripts/lp_snapshot.py
@@ -12,14 +12,11 @@ help: ## Show this help message
 	@echo "Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
-up: ## Start Minecraft server + ModSync API (without public Caddy TLS proxy)
+up: ## Start Minecraft server + ModSync API + WireGuard
 	$(COMPOSE) up -d --build
 
-up-proxy: ## Start Minecraft server + ModSync API + Caddy HTTPS/WSS proxy (VPS)
-	$(COMPOSE) --profile proxy up -d --build
-
 down: ## Stop server stack
-	$(COMPOSE) --profile proxy down
+	$(COMPOSE) down
 
 restart: ## Restart Minecraft server container
 	$(COMPOSE) restart mc
@@ -49,7 +46,7 @@ lp-snapshot: ## Export LuckPerms snapshot via RCON to server/mods/luckperms/conf
 
 test: ## Run server, modsync-api, and client unit tests
 	python3 -m unittest discover -s server -p "test_sync_mod_configurations.py"
-	python3 -m unittest server/modsync_api/tests/test_manifest.py
+	python3 -m unittest modsync_api/tests/test_manifest.py
 	python3 -m unittest client/tests/test_syncer.py
 
 client-build: ## Build standalone client binary via PyInstaller

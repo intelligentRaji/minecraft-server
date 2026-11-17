@@ -6,10 +6,10 @@ trash_drive.py - Trash specific files or prune stale mods from Google Drive (min
 import sys
 import argparse
 from pathlib import Path
-from gdrive_utils import GDriveClient, find_repo_root
+from gdrive_utils import GDriveClient, find_server_root
 
-REPO_ROOT = find_repo_root()
-MODPACK_DIR = REPO_ROOT / "modpack"
+SERVER_ROOT = find_server_root()
+MODPACK_DIR = SERVER_ROOT / "modpack"
 CATEGORIES = ["server-client", "server-only", "client-only"]
 
 

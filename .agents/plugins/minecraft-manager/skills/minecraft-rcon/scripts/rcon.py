@@ -14,13 +14,11 @@ DEFAULT_TIMEOUT_SECONDS = 30
 
 
 def find_repo_root(start: Path) -> Path:
-    """Walk upward from start to locate the server root (containing docker-compose.yml)."""
+    """Walk upward from start to locate the repo root (containing docker-compose.yml)."""
     for candidate in (start, *start.parents):
-        if (candidate / "server" / "docker-compose.yml").is_file():
-            return candidate / "server"
         if (candidate / "docker-compose.yml").is_file():
             return candidate
-    raise RuntimeError(f"Could not locate server root (docker-compose.yml) above {start}")
+    raise RuntimeError(f"Could not locate repo root (docker-compose.yml) above {start}")
 
 
 REPO_ROOT = find_repo_root(Path(__file__).resolve().parent)

@@ -13,15 +13,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
-def find_repo_root() -> Path:
-    """Dynamically finds the server root containing docker-compose.yml."""
+def find_server_root() -> Path:
+    """Dynamically finds the server directory containing modpack/."""
     p = Path(__file__).resolve().parent
     for parent in [p] + list(p.parents):
-        if (parent / "server" / "docker-compose.yml").is_file():
+        if (parent / "docker-compose.yml").is_file() and (parent / "server" / "mods").is_dir():
             return parent / "server"
-        if (parent / "docker-compose.yml").is_file():
+        if (parent / "sync_mod_configurations.py").is_file() and (parent / "mods").is_dir():
             return parent
-    raise RuntimeError("Could not determine server root (missing docker-compose.yml)")
+    raise RuntimeError("Could not determine server directory (missing server/mods/)")
 
 
 class GDriveClient:

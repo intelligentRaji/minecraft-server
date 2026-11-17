@@ -1,5 +1,0 @@
-{$MODSYNC_DOMAIN:localhost} {
-	encode gzip
-
-	reverse_proxy modsync-api:8080
-}

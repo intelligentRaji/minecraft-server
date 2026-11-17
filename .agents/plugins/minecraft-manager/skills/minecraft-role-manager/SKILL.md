@@ -25,7 +25,7 @@ Step-by-step procedure for assigning or revoking player roles by nickname on the
 ---
 
 ### Step 1: Resolve Player Identity
-Run `resolve_player.py` to get the player's exact `name` and offline `uuid` from `data/usercache.json`:
+Run `resolve_player.py` to get the player's exact `name` and offline `uuid` from `server/data/usercache.json`:
 
 ```bash
 python3 .agents/plugins/minecraft-manager/skills/minecraft-role-manager/scripts/resolve_player.py <nickname>

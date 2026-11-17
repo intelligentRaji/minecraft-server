@@ -13,10 +13,9 @@
 .env
 .env.*
 !.env.example
-!/server/.env.example
 
 # WireGuard private keys and client config
-/server/wireguard/
+/wireguard/
 
 # Python bytecode, virtualenvs, test & build caches
 __pycache__/

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract and sanitize a LuckPerms export archive into mods/luckperms/configs/."""
+"""Extract and sanitize a LuckPerms export archive into server/mods/luckperms/configs/."""
 
 from __future__ import annotations
 
@@ -16,21 +16,21 @@ LP_EXPORT_POLL_INTERVAL = 0.25
 SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
-def find_repo_root(start: Path | None = None) -> Path:
-    """Walk upward from start to locate the server root (containing docker-compose.yml)."""
+def find_server_root(start: Path | None = None) -> Path:
+    """Walk upward from start to locate the server directory."""
     origin = start if start is not None else Path(__file__).resolve().parent
     for candidate in (origin, *origin.parents):
-        if (candidate / "server" / "docker-compose.yml").is_file():
+        if (candidate / "docker-compose.yml").is_file() and (candidate / "server" / "mods").is_dir():
             return candidate / "server"
-        if (candidate / "docker-compose.yml").is_file():
+        if (candidate / "sync_mod_configurations.py").is_file() and (candidate / "mods").is_dir():
             return candidate
-    raise RuntimeError(f"Could not locate server root (docker-compose.yml) above {origin}")
+    raise RuntimeError(f"Could not locate server directory above {origin}")
 
 
-REPO_ROOT = find_repo_root()
-LP_DATA_DIR = REPO_ROOT / "data" / "config" / "luckperms"
+SERVER_ROOT = find_server_root()
+LP_DATA_DIR = SERVER_ROOT / "data" / "config" / "luckperms"
 LP_SNAPSHOT_OUT = (
-    REPO_ROOT / "mods" / "luckperms" / "configs" / "luckperms-snapshot.json"
+    SERVER_ROOT / "mods" / "luckperms" / "configs" / "luckperms-snapshot.json"
 )
 
 
@@ -46,10 +46,10 @@ def clean_archive(archive_path: Path, *, dry_run: bool) -> int:
     if not archive_path.is_file():
         return 0
     if dry_run:
-        print(f"[DRY-RUN] Would remove existing archive: {archive_path.relative_to(REPO_ROOT)}")
+        print(f"[DRY-RUN] Would remove existing archive: {archive_path.relative_to(SERVER_ROOT)}")
         return 0
     archive_path.unlink(missing_ok=True)
-    print(f"Removed pre-existing archive: {archive_path.relative_to(REPO_ROOT)}")
+    print(f"Removed pre-existing archive: {archive_path.relative_to(SERVER_ROOT)}")
     return 0
 
 
@@ -84,9 +84,9 @@ def extract_snapshot(archive_path: Path, *, keep_users: bool, dry_run: bool) -> 
             del payload["users"]
 
         user_note = "kept users" if keep_users else "stripped users"
-        rel_out = LP_SNAPSHOT_OUT.relative_to(REPO_ROOT)
+        rel_out = LP_SNAPSHOT_OUT.relative_to(SERVER_ROOT)
         if dry_run:
-            print(f"[DRY-RUN] Validated {archive_path.relative_to(REPO_ROOT)}; would write ({user_note}) to {rel_out}")
+            print(f"[DRY-RUN] Validated {archive_path.relative_to(SERVER_ROOT)}; would write ({user_note}) to {rel_out}")
             return 0
 
         LP_SNAPSHOT_OUT.parent.mkdir(parents=True, exist_ok=True)

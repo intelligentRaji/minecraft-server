@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - name: Run modsync_api tests
-        working-directory: server/modsync_api
+        working-directory: modsync_api
         run: |
           uv sync --group dev
           uv run pytest

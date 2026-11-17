@@ -50,7 +50,7 @@ python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/s
 Check the container startup logs to ensure all mods loaded cleanly:
 
 ```bash
-docker compose -f server/docker-compose.yml logs --tail=50 mc
+docker compose logs --tail=50 mc
 ```
 Confirm the server reports:
 ```text
@@ -61,12 +61,12 @@ If the newly installed mods generated new configuration files in `server/data/co
 ---
 
 ### Step 5: Create or Remove Mod Config Harness
-After adding or removing a server mod (`server-client` or `server-only`) in `modpack/`:
+After adding or removing a server mod (`server-client` or `server-only`) in `server/modpack/`:
 
 1. **After Installing a Server Mod:**
-   Activate the **`minecraft-mod-harness-manager`** skill to invoke the `minecraft-mod-harness-manager` subagent pipeline, which builds `mods/<slug>/` (`sync.py`, `configs/`, `AGENTS.md`, and `.agents/skills/<slug>-config/SKILL.md`).
+   Activate the **`minecraft-mod-harness-manager`** skill to invoke the `minecraft-mod-harness-manager` subagent pipeline, which builds `server/mods/<slug>/` (`sync.py`, `configs/`, `AGENTS.md`, and `.agents/skills/<slug>-config/SKILL.md`).
 2. **After Removing a Server Mod:**
-   Activate the **`minecraft-mod-harness-manager`** skill (`remove_mod_harness.py <slug>`) to delete `mods/<slug>/`.
+   Activate the **`minecraft-mod-harness-manager`** skill (`remove_mod_harness.py <slug>`) to delete `server/mods/<slug>/`.
 
 ---
 

@@ -1,7 +1,9 @@
 # Minecraft Forge 1.20.1 Server & ModSync Monorepo
 
 This monorepo contains:
-- **`server/`** — Docker Compose stack for the Forge 1.20.1 Minecraft server ([`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-server)), per-mod configuration bridges (`server/mods/`), modpack jars (`server/modpack/`), and the **`modsync-api`** FastAPI WebSocket + HTTP distribution service (`server/modsync_api/`).
+- **`docker-compose.yml` & `.env`** — Root Docker Compose stack for the Forge 1.20.1 Minecraft server ([`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-server)), `modsync-api`, and the WireGuard tunnel (`wireguard/`).
+- **`server/`** — Minecraft server runtime (`server/data/`), per-mod configuration bridges (`server/mods/`), and modpack jars (`server/modpack/`).
+- **`modsync_api/`** — FastAPI WebSocket + HTTP distribution service (`modsync-api`).
 - **`client/`** — Standalone Python background synchronizer & system tray app (`modsync-client`) that players install to automatically stay in sync with the server over WebSocket (`wss://`) + HTTPS.
 
 ## Server Specifications
@@ -21,8 +23,7 @@ You can manage the server using `make` commands or direct `docker compose` comma
 
 | Command | Description |
 | :--- | :--- |
-| `make up` | Start Minecraft server + `modsync-api` locally (`127.0.0.1:8080`) |
-| `make up-proxy` | Start full VPS stack including Caddy automatic HTTPS/WSS (`MODSYNC_DOMAIN`) |
+| `make up` | Start Minecraft server + `modsync-api` + WireGuard |
 | `make down` | Stop server stack |
 | `make restart` | Restart Minecraft server container |
 | `make logs` | Follow Minecraft server logs in real-time |
@@ -42,15 +43,11 @@ You can manage the server using `make` commands or direct `docker compose` comma
 
 ---
 
-### VPS Deployment (HTTPS + WSS)
+### VPS Reverse Proxy (Caddy over WireGuard)
 
-1. Copy `server/.env.example` to `server/.env` and set `RCON_PASSWORD`, `MODSYNC_DOMAIN` (e.g. `mods.yourdomain.com`), and `MODSYNC_ADMIN_TOKEN`.
-2. Point your domain's DNS `A` record to your VPS IP and ensure ports `80`, `443`, and `25565` are open.
-3. Start the stack with Caddy:
-   ```bash
-   make up-proxy
-   ```
-   Caddy automatically provisions a TLS certificate and proxies `https://<MODSYNC_DOMAIN>` and `wss://<MODSYNC_DOMAIN>/ws` to `modsync-api:8080`.
+Caddy runs directly on the VPS (`/opt/modsync-caddy/`) and proxies `/api/*`, `/ws`, and `/health` over the WireGuard tunnel to `10.100.0.2:8080`.
+* Without a domain: Caddy listens on `:80` and players connect to `http://<VPS_IP>`.
+* With a domain: replace `:80` in the VPS `Caddyfile` with `mods.yourdomain.com` so Caddy automatically provisions Let's Encrypt HTTPS/WSS on port `443`.
 
 ### Client Release (`client-v*`)
 
@@ -62,18 +59,18 @@ Push a tag matching `client-v*` (e.g., `git tag client-v0.1.0 && git push origin
 
 #### 1. Start the Server
 ```bash
-docker compose -f server/docker-compose.yml up -d
+docker compose up -d
 ```
 
 #### 2. Follow Logs (Server Startup)
 ```bash
-docker compose -f server/docker-compose.yml logs -f mc
+docker compose logs -f mc
 ```
 *(Wait until you see `[Server thread/INFO]: Done (...s)! For help, type "help"`)*
 
 #### 3. Stop the Server
 ```bash
-docker compose -f server/docker-compose.yml down
+docker compose down
 ```
 
 ---
@@ -84,13 +81,18 @@ Mods are organized in `server/modpack/` by target:
 
 ```text
 minecraft-server/
-├── server/
-│   ├── modpack/
-│   │   ├── server-client/ # Content mods required on BOTH server and client (e.g. Biomes O' Plenty, Twilight Forest)
-│   │   ├── server-only/   # Server-side mods (e.g. Spark, Chunky, admin tools)
-│   │   └── client-only/   # Client-side mods (e.g. Embeddium, Distant Horizons, Jade, JEI, Xaero's)
-│   └── modsync_api/       # FastAPI WebSocket + HTTP manifest & jar server
-└── client/                # Standalone Python tray/daemon client for players
+├── docker-compose.yml     # Root Compose stack (mc, modsync-api, wireguard)
+├── .env                   # Secrets & environment overrides (from .env.example)
+├── modsync_api/           # FastAPI WebSocket + HTTP manifest & jar server
+├── client/                # Standalone Python tray/daemon client for players
+├── wireguard/             # WireGuard tunnel configuration (gitignored)
+└── server/
+    ├── data/              # Minecraft server runtime & worlds (gitignored)
+    ├── mods/              # Per-mod configuration bridges & sync script
+    └── modpack/
+        ├── server-client/ # Content mods required on BOTH server and client (e.g. Biomes O' Plenty, Twilight Forest)
+        ├── server-only/   # Server-side mods (e.g. Spark, Chunky, admin tools)
+        └── client-only/   # Client-side mods (e.g. Embeddium, Distant Horizons, Jade, JEI, Xaero's)
 ```
 
 ### Synchronize Mods
@@ -138,7 +140,7 @@ python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/s
 | TerraBlender | `TerraBlender-forge-1.20.1-3.0.1.11.jar` |
 | Twilight Forest | `twilightforest-1.20.1-4.3.2508-universal.jar` |
 | Twilight Forest - Dungeons & Villages | `tf_dnv-1.2.3.jar` |
-| Vanilla Backport *(worldgen disabled in `data/config/vanillabackport-common.toml`; Bundles of Bravery enabled)* | `VanillaBackport-forge-1.20.1-1.2.2.jar` |
+| Vanilla Backport *(worldgen disabled in `server/data/config/vanillabackport-common.toml`; Bundles of Bravery enabled)* | `VanillaBackport-forge-1.20.1-1.2.2.jar` |
 
 #### `modpack/server-only/` (Server Only)
 | Mod | Jar |

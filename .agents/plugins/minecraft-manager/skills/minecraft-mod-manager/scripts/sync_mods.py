@@ -20,18 +20,17 @@ import urllib.request
 from pathlib import Path
 
 
-def find_server_root() -> Path:
-    """Walk upward from this script to locate the server root containing docker-compose.yml."""
+def find_repo_root() -> Path:
+    """Walk upward from this script to locate the repo root containing docker-compose.yml."""
     p = Path(__file__).resolve().parent
     for parent in [p] + list(p.parents):
-        if (parent / "server" / "docker-compose.yml").is_file():
-            return parent / "server"
         if (parent / "docker-compose.yml").is_file():
             return parent
-    raise RuntimeError("Could not locate server root containing docker-compose.yml")
+    raise RuntimeError("Could not locate repo root containing docker-compose.yml")
 
 
-SERVER_ROOT = find_server_root()
+REPO_ROOT = find_repo_root()
+SERVER_ROOT = REPO_ROOT / "server"
 MODPACK_DIR = SERVER_ROOT / "modpack"
 SERVER_CLIENT_DIR = MODPACK_DIR / "server-client"
 SERVER_ONLY_DIR = MODPACK_DIR / "server-only"
@@ -139,7 +138,7 @@ def main() -> None:
     # 3. Optional server restart
     if args.restart and server_changed and not args.dry_run:
         print("\nRestarting Docker Minecraft server container...")
-        subprocess.run(["docker", "compose", "restart", "mc"], cwd=SERVER_ROOT, check=True)
+        subprocess.run(["docker", "compose", "restart", "mc"], cwd=REPO_ROOT, check=True)
         print("Server restarted successfully.")
 
     # 4. Notify modsync-api to recompute manifest & push WebSocket updates to connected players
