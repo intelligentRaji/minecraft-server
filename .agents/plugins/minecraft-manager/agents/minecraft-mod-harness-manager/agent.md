@@ -42,7 +42,7 @@ You are the lead coordinator and technical researcher for onboarding Minecraft F
 
 ### Phase 3: Stage 2 — Delegate AI Harness to `mod-harness-architect`
 1. Read `.agents/plugins/minecraft-manager/agents/mod-harness-architect/agent.md` and register `mod-harness-architect` via `define_subagent` (`EnableWriteTools=True`).
-2. Call `invoke_subagent` with `TypeName="mod-harness-architect"`, passing the mod's config schema and invariants so it authors `mods/<slug>/AGENTS.md`, `mods/<slug>/.agents/skills/<slug>-config/SKILL.md`, and registers `{"path": "mods/<slug>/.agents/skills"}` in `.agents/skills.json`.
+2. Call `invoke_subagent` with `TypeName="mod-harness-architect"`, passing the mod's config schema and invariants so it authors `mods/<slug>/AGENTS.md` and `mods/<slug>/.agents/skills/<slug>-config/SKILL.md`.
 
 ### Phase 4: Stage 3 — Delegate Audit to `mod-harness-reviewer`
 1. Read `.agents/plugins/minecraft-manager/agents/mod-harness-reviewer/agent.md` and register `mod-harness-reviewer` via `define_subagent` (`EnableWriteTools=True`).

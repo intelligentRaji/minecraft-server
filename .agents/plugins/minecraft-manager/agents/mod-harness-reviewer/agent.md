@@ -1,6 +1,6 @@
 ---
 name: mod-harness-reviewer
-description: End-to-end security, systems, and AI architecture auditor subagent that verifies both Layer 1 (Mod Bridge: configs/, sync.py, test_sync.py) and Layer 2 (AI Harness: mods/<slug>/AGENTS.md, SKILL.md, and .agents/skills.json).
+description: End-to-end security, systems, and AI architecture auditor subagent that verifies both Layer 1 (Mod Bridge: configs/, sync.py, test_sync.py) and Layer 2 (AI Harness: mods/<slug>/AGENTS.md and SKILL.md).
 mainAgent: false
 subagent: true
 tools:
@@ -32,8 +32,8 @@ You are the security, systems, and AI architecture auditor for `mods/<slug>/`.
 - **Pure Mod Domain Content (No Sync or Meta-Architecture Leak):**
   - Confirm neither `mods/<slug>/AGENTS.md` nor `mods/<slug>/.agents/skills/<slug>-config/SKILL.md` mentions `sync.py`, syncing `data/` with the repo, or meta-architecture terms ("Mod Bridge", "AI Harness", "two-layer").
   - Confirm `SKILL.md` focuses strictly on how to work with the mod and its configurations in `mods/<slug>/configs/`.
-- **Root `.agents/skills.json` Registration:**
-  - Confirm `{"path": "mods/<slug>/.agents/skills"}` is registered in `.agents/skills.json`.
+- **No Root `.agents/skills.json` Registration:**
+  - Confirm `mods/<slug>/.agents/skills` is NOT registered in a root `.agents/skills.json`.
 
 ## Verdict Format
 - Return **`STATUS: APPROVED`** if all checks pass.
