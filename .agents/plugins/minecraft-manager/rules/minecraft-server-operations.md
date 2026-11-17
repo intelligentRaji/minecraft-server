@@ -7,8 +7,8 @@ description: Declarative invariants for Minecraft server operations, permissions
 
 ### Zero-Downtime & Restart Discipline
 - **Live Changes First:** Never restart or stop `mc-forge-server` for live-capable changes (LuckPerms groups/permissions, scoreboard teams, `op`/`deop`, gamerules, or whitelist updates).
-- **When Restarts Are Valid:** Only restart `mc` when server mods (`modpack/server-only/` or `modpack/server-client/` synced to `./data/mods/`) or startup-only configs (`server.properties`, `docker-compose.yml`, non-reloadable mod configs) change.
-- **Core `server.properties` Source of Truth:** Edit `server.properties` keys via environment variables in `docker-compose.yml` or `.env` (`itzg/minecraft-server` regenerates `data/server.properties` on startup—never edit `data/server.properties` directly).
+- **When Restarts Are Valid:** Only restart `mc` when server mods (`server/modpack/server-only/` or `server/modpack/server-client/` synced to `server/data/mods/`) or startup-only configs (`server.properties`, `server/docker-compose.yml`, non-reloadable mod configs) change.
+- **Core `server.properties` Source of Truth:** Edit `server.properties` keys via environment variables in `server/docker-compose.yml` or `server/.env` (`itzg/minecraft-server` regenerates `server/data/server.properties` on startup—never edit `server/data/server.properties` directly).
 
 ### Disruptive Action Guardrails
 - **Explicit Confirmation:** Obtain user confirmation before running `stop`, `kick`, `ban`, `whitelist off`, or restarting/stopping `mc-forge-server`.

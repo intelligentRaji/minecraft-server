@@ -1,13 +1,15 @@
-# Minecraft Forge 1.20.1 Server (Docker)
+# Minecraft Forge 1.20.1 Server & ModSync Monorepo
 
-This repository contains the Docker Compose setup for a modded Minecraft server using the [`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-server) image.
+This monorepo contains:
+- **`server/`** — Docker Compose stack for the Forge 1.20.1 Minecraft server ([`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-server)), per-mod configuration bridges (`server/mods/`), modpack jars (`server/modpack/`), and the **`modsync-api`** FastAPI WebSocket + HTTP distribution service (`server/modsync_api/`).
+- **`client/`** — Standalone Python background synchronizer & system tray app (`modsync-client`) that players install to automatically stay in sync with the server over WebSocket (`wss://`) + HTTPS.
 
 ## Server Specifications
 - **Edition:** Java Edition
 - **Version:** 1.20.1
 - **Mod Loader:** Forge
 - **Allocated RAM:** 6 GB
-- **Port:** 25565
+- **Ports:** `25565` (Minecraft), `80`/`443` (Caddy HTTPS/WSS reverse proxy for ModSync)
 
 ---
 
@@ -19,14 +21,18 @@ You can manage the server using `make` commands or direct `docker compose` comma
 
 | Command | Description |
 | :--- | :--- |
-| `make up` | Start server in background |
-| `make down` | Stop server |
-| `make restart` | Restart server container |
-| `make logs` | Follow server logs in real-time |
+| `make up` | Start Minecraft server + `modsync-api` locally (`127.0.0.1:8080`) |
+| `make up-proxy` | Start full VPS stack including Caddy automatic HTTPS/WSS (`MODSYNC_DOMAIN`) |
+| `make down` | Stop server stack |
+| `make restart` | Restart Minecraft server container |
+| `make logs` | Follow Minecraft server logs in real-time |
+| `make modsync-logs` | Follow `modsync-api` WebSocket/HTTP logs |
 | `make status` | View container status |
-| `make sync` | Sync mods to Docker + Modrinth client (restarts server if changed) |
-| `make sync-dry` | Preview mod synchronization without touching files |
+| `make sync` | Sync `server/modpack/` to `server/data/mods/`, restart `mc` if changed, and broadcast WebSocket update |
+| `make sync-dry` | Preview server mod synchronization without touching files |
 | `make backup` | Upload current modpack to Google Drive |
+| `make test` | Run unit tests across server config runner, `modsync_api`, and `client` |
+| `make client-build` | Build standalone client executable via PyInstaller |
 | `make progress` | Display Chunky pre-generation progress (alias for `make chunky-progress`) |
 | `make chunky-start` | Start Chunky pre-generation task |
 | `make chunky-pause` | Pause Chunky pre-generation task and save progress |
@@ -36,50 +42,66 @@ You can manage the server using `make` commands or direct `docker compose` comma
 
 ---
 
+### VPS Deployment (HTTPS + WSS)
+
+1. Copy `server/.env.example` to `server/.env` and set `RCON_PASSWORD`, `MODSYNC_DOMAIN` (e.g. `mods.yourdomain.com`), and `MODSYNC_ADMIN_TOKEN`.
+2. Point your domain's DNS `A` record to your VPS IP and ensure ports `80`, `443`, and `25565` are open.
+3. Start the stack with Caddy:
+   ```bash
+   make up-proxy
+   ```
+   Caddy automatically provisions a TLS certificate and proxies `https://<MODSYNC_DOMAIN>` and `wss://<MODSYNC_DOMAIN>/ws` to `modsync-api:8080`.
+
+### Client Release (`client-v*`)
+
+Push a tag matching `client-v*` (e.g., `git tag client-v0.1.0 && git push origin client-v0.1.0`) to trigger [release-client.yml](file:///home/wakaria/dev/minecraft-server/.github/workflows/release-client.yml), which builds `ModSync.exe` (Windows) and `ModSync-linux` (Linux) and publishes a GitHub Release.
+
+---
+
 ### Manual Docker Compose
 
 #### 1. Start the Server
 ```bash
-docker compose up -d
+docker compose -f server/docker-compose.yml up -d
 ```
 
 #### 2. Follow Logs (Server Startup)
 ```bash
-docker compose logs -f mc
+docker compose -f server/docker-compose.yml logs -f mc
 ```
 *(Wait until you see `[Server thread/INFO]: Done (...s)! For help, type "help"`)*
 
 #### 3. Stop the Server
 ```bash
-docker compose down
+docker compose -f server/docker-compose.yml down
 ```
 
 ---
 
 ## Managing Mods
 
-Mods are organized in the `modpack/` folder by target:
+Mods are organized in `server/modpack/` by target:
 
 ```text
 minecraft-server/
-├── modpack/
-│   ├── server-client/ # Content mods required on BOTH server and client (e.g. Biomes O' Plenty, Twilight Forest)
-│   ├── server-only/   # Server-side mods (e.g. Spark, Chunky, admin tools)
-│   └── client-only/   # Client-side mods (e.g. Embeddium, Distant Horizons, Jade, JEI, Xaero's)
+├── server/
+│   ├── modpack/
+│   │   ├── server-client/ # Content mods required on BOTH server and client (e.g. Biomes O' Plenty, Twilight Forest)
+│   │   ├── server-only/   # Server-side mods (e.g. Spark, Chunky, admin tools)
+│   │   └── client-only/   # Client-side mods (e.g. Embeddium, Distant Horizons, Jade, JEI, Xaero's)
+│   └── modsync_api/       # FastAPI WebSocket + HTTP manifest & jar server
+└── client/                # Standalone Python tray/daemon client for players
 ```
 
 ### Synchronize Mods
 
-Run the sync script to automatically distribute mods to the Docker server (`./data/mods/`) and your Windows Modrinth profile (`Forge 1.20.1`):
+Run the sync script to distribute server mods to `server/data/mods/` and notify `modsync-api` so connected players update immediately:
 
 ```bash
 # Preview what will be synced
 python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --dry-run
 
-# Synchronize mods
-python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py
-
-# Synchronize mods and automatically restart the server if server mods changed
+# Synchronize server mods, restart mc if changed, and push WebSocket update
 python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
 ```
 

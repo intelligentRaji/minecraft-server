@@ -10,11 +10,13 @@ import sys
 
 
 def find_repo_root(start: Path) -> Path:
-    """Walk upward from start to locate the repository root (containing docker-compose.yml)."""
+    """Walk upward from start to locate the server root (containing docker-compose.yml)."""
     for candidate in (start, *start.parents):
+        if (candidate / "server" / "docker-compose.yml").is_file():
+            return candidate / "server"
         if (candidate / "docker-compose.yml").is_file():
             return candidate
-    raise RuntimeError(f"Could not locate repository root (docker-compose.yml) above {start}")
+    raise RuntimeError(f"Could not locate server root (docker-compose.yml) above {start}")
 
 
 PERMS_FILE = (

@@ -10,10 +10,11 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[6]
-if not (REPO_ROOT / "docker-compose.yml").is_file():
-    raise RuntimeError(f"Expected docker-compose.yml at resolved REPO_ROOT={REPO_ROOT}")
+SERVER_ROOT = REPO_ROOT / "server" if (REPO_ROOT / "server" / "docker-compose.yml").is_file() else REPO_ROOT
+if not (SERVER_ROOT / "docker-compose.yml").is_file():
+    raise RuntimeError(f"Expected docker-compose.yml at resolved SERVER_ROOT={SERVER_ROOT}")
 
-MODS_DIR = REPO_ROOT / "mods"
+MODS_DIR = SERVER_ROOT / "mods"
 SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 
 

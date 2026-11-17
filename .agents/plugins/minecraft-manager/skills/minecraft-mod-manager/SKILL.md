@@ -21,26 +21,26 @@ python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/q
 ---
 
 ### Step 2: Download Mod into Target Category
-Download or place the `.jar` file directly into the appropriate folder inside `modpack/`:
-* Content mods (blocks, mobs, worldgen) $\rightarrow$ `modpack/server-client/`
-* Headless server utilities (backups, optimization) $\rightarrow$ `modpack/server-only/`
-* UI / HUD / Rendering $\rightarrow$ `modpack/client-only/`
+Download or place the `.jar` file directly into the appropriate folder inside `server/modpack/`:
+* Content mods (blocks, mobs, worldgen) $\rightarrow$ `server/modpack/server-client/`
+* Headless server utilities (backups, optimization) $\rightarrow$ `server/modpack/server-only/`
+* UI / HUD / Rendering $\rightarrow$ `server/modpack/client-only/`
 
 ```bash
-python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug> --download-to modpack/<category>
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug> --download-to server/modpack/<category>
 ```
 Repeat for any required dependencies reported in Step 1.
 
 ---
 
 ### Step 3: Synchronize Modpack
-Synchronize the new `.jar` files with both the Docker server (`./data/mods/`) and the Windows Modrinth App client *(requires `BypassSandbox: true` to access `/mnt/c/Users/...` and the Docker socket for `--restart`; pass `--skip-client` only if intentionally skipping Windows client sync)*:
+Synchronize the new `.jar` files with the Docker server (`server/data/mods/`) and notify `modsync-api` so connected clients receive the update over WebSocket *(requires `BypassSandbox: true` for the Docker socket on `--restart`)*:
 
 ```bash
 # Preview changes:
 python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --dry-run
 
-# Synchronize and restart server if server mods changed:
+# Synchronize, restart server if server mods changed, and notify modsync-api:
 python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
 ```
 
@@ -50,13 +50,13 @@ python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/s
 Check the container startup logs to ensure all mods loaded cleanly:
 
 ```bash
-docker compose logs --tail=50 mc
+docker compose -f server/docker-compose.yml logs --tail=50 mc
 ```
 Confirm the server reports:
 ```text
 [Server thread/INFO] [minecraft/DedicatedServer]: Done (...s)! For help, type "help"
 ```
-If the newly installed mods generated new configuration files in `data/config/` or `data/world/serverconfig/`, activate **`minecraft-mod-harness-manager`** in Step 5 to create their `mods/<slug>/` vertical slices.
+If the newly installed mods generated new configuration files in `server/data/config/` or `server/data/world/serverconfig/`, activate **`minecraft-mod-harness-manager`** in Step 5 to create their `server/mods/<slug>/` vertical slices.
 
 ---
 

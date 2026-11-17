@@ -1,5 +1,5 @@
 # Root Minecraft runtime server data and worlds
-/data/
+/server/data/
 
 # Mod binaries
 *.jar
@@ -12,14 +12,21 @@
 # Environment overrides
 .env
 .env.*
+!.env.example
+!/server/.env.example
 
 # WireGuard private keys and client config
-/wireguard/
+/server/wireguard/
 
-# Python bytecode & cache
+# Python bytecode, virtualenvs, test & build caches
 __pycache__/
 *.py[cod]
 *$py.class
+.venv/
+.pytest_cache/
+*.egg-info/
+/client/build/
+/client/dist/
 
 # Obsidian workspace layout and local cache
 **/.obsidian/workspace*.json
@@ -28,19 +35,19 @@ __pycache__/
 **/.obsidian/plugins/termy/agent-context/obsidian-context.json
 
 # Server config safety guards (secrets, DBs, downloaded libs, caches, player state)
-mods/**/configs/**/discord.json
-mods/**/configs/**/storage.json
-mods/**/configs/**/libs/
-mods/**/configs/**/data/
-mods/**/configs/**/cache/
-mods/**/configs/**/tmp/
-mods/**/configs/**/translations/
-mods/**/configs/**/banned-ips.json
-mods/**/configs/**/banned-players.json
-mods/**/configs/**/usercache.json
-mods/**/configs/**/usernamecache.json
-mods/**/configs/**/whitelist.json
-mods/**/configs/**/ops.json
+server/mods/**/configs/**/discord.json
+server/mods/**/configs/**/storage.json
+server/mods/**/configs/**/libs/
+server/mods/**/configs/**/data/
+server/mods/**/configs/**/cache/
+server/mods/**/configs/**/tmp/
+server/mods/**/configs/**/translations/
+server/mods/**/configs/**/banned-ips.json
+server/mods/**/configs/**/banned-players.json
+server/mods/**/configs/**/usercache.json
+server/mods/**/configs/**/usernamecache.json
+server/mods/**/configs/**/whitelist.json
+server/mods/**/configs/**/ops.json
 *.db
 *.db-wal
 *.db-shm
@@ -53,4 +60,3 @@ mods/**/configs/**/ops.json
 *.zip
 *.tar
 *.jfr
-

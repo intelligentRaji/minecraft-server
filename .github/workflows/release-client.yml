@@ -1,0 +1,72 @@
+name: Release ModSync Client
+
+on:
+  push:
+    tags:
+      - "client-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test-server-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Run modsync_api tests
+        working-directory: server/modsync_api
+        run: |
+          uv sync --group dev
+          uv run pytest
+          python3 -m unittest tests/test_manifest.py
+
+  build-client:
+    needs: test-server-manifest
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: ModSync.exe
+            built-path: client/dist/ModSync.exe
+          - os: ubuntu-latest
+            artifact: ModSync-linux
+            built-path: client/dist/ModSync
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Install client dependencies and run tests
+        working-directory: client
+        run: |
+          uv sync --group dev
+          uv run pytest
+      - name: Build standalone binary with PyInstaller
+        working-directory: client
+        run: uv run pyinstaller modsync.spec --clean --noconfirm
+      - name: Rename Linux binary
+        if: matrix.os == 'ubuntu-latest'
+        run: mv client/dist/ModSync client/dist/ModSync-linux
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.built-path }}
+
+  publish-release:
+    needs: build-client
+    if: startsWith(github.ref, 'refs/tags/client-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/ModSync.exe
+            artifacts/ModSync-linux

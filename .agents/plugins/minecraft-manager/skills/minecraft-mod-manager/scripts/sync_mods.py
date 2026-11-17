@@ -1,49 +1,42 @@
 #!/usr/bin/env python3
 """
-sync_mods.py - Synchronize Minecraft mods between modpack categories, Docker server, and Modrinth client.
+sync_mods.py - Synchronize server mods from server/modpack/ to server/data/mods/ and notify modsync-api.
 
 Categories:
-  modpack/server-client/ -> Copied to both Server (./data/mods) and Client (Modrinth profile)
-  modpack/server-only/   -> Copied only to Server (./data/mods)
-  modpack/client-only/   -> Copied only to Client (Modrinth profile)
+  server/modpack/server-client/ -> Copied to Server (server/data/mods) and served to clients via modsync-api
+  server/modpack/server-only/   -> Copied only to Server (server/data/mods)
+  server/modpack/client-only/   -> Served only to clients via modsync-api
 """
 
-import os
-import sys
-import shutil
+from __future__ import annotations
+
 import argparse
+import json
+import os
+import shutil
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 
-def find_repo_root() -> Path:
+
+def find_server_root() -> Path:
+    """Walk upward from this script to locate the server root containing docker-compose.yml."""
     p = Path(__file__).resolve().parent
     for parent in [p] + list(p.parents):
-        if (parent / ".git").exists() or (parent / "docker-compose.yml").exists():
+        if (parent / "server" / "docker-compose.yml").is_file():
+            return parent / "server"
+        if (parent / "docker-compose.yml").is_file():
             return parent
-    return p.parents[3]
+    raise RuntimeError("Could not locate server root containing docker-compose.yml")
 
-REPO_ROOT = find_repo_root()
-MODPACK_DIR = REPO_ROOT / "modpack"
+
+SERVER_ROOT = find_server_root()
+MODPACK_DIR = SERVER_ROOT / "modpack"
 SERVER_CLIENT_DIR = MODPACK_DIR / "server-client"
 SERVER_ONLY_DIR = MODPACK_DIR / "server-only"
 CLIENT_ONLY_DIR = MODPACK_DIR / "client-only"
-SERVER_MODS_DIR = REPO_ROOT / "data" / "mods"
-
-def detect_client_mods_dir() -> Path:
-    # 1. Environment variable override
-    if "MODRINTH_CLIENT_MODS" in os.environ:
-        return Path(os.environ["MODRINTH_CLIENT_MODS"])
-    # 2. Dynamic discovery in WSL Windows users
-    users_dir = Path("/mnt/c/Users")
-    if users_dir.exists():
-        for candidate in users_dir.glob("*/AppData/Roaming/ModrinthApp/profiles/Forge 1.20.1/mods"):
-            if candidate.is_dir():
-                return candidate
-    # 3. Fallback to default relative path
-    return Path.home() / ".minecraft" / "mods"
-
-
-DEFAULT_CLIENT_MODS_DIR = detect_client_mods_dir()
+SERVER_MODS_DIR = SERVER_ROOT / "data" / "mods"
 
 
 def get_jars_in_dir(directory: Path) -> dict[str, Path]:
@@ -65,7 +58,6 @@ def sync_target(target_name: str, target_dir: Path, source_dirs: list[Path], dry
     print(f"\n[{target_name.upper()}] Target: {target_dir}")
     print(f"  Desired mods ({len(desired_jars)}): {', '.join(sorted(desired_jars.keys())) if desired_jars else 'None'}")
 
-    # Remove stale jars
     for name, path in existing_jars.items():
         if name not in desired_jars:
             print(f"  [-] Removing stale mod: {name}")
@@ -73,7 +65,6 @@ def sync_target(target_name: str, target_dir: Path, source_dirs: list[Path], dry
             if not dry_run:
                 path.unlink()
 
-    # Copy new or updated jars
     for name, src_path in desired_jars.items():
         dst_path = target_dir / name
         if not dst_path.exists() or src_path.stat().st_size != dst_path.stat().st_size:
@@ -88,12 +79,44 @@ def sync_target(target_name: str, target_dir: Path, source_dirs: list[Path], dry
     return changed
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Sync Minecraft mods between modpack folders, server, and client.")
+def notify_modsync_api(base_url: str, admin_token: str | None) -> None:
+    """Trigger modsync-api manifest reload so connected WebSocket clients update immediately."""
+    reload_url = f"{base_url.rstrip('/')}/api/reload"
+    headers = {"User-Agent": "sync_mods/1.0"}
+    if admin_token:
+        headers["X-Admin-Token"] = admin_token
+    req = urllib.request.Request(reload_url, data=b"", method="POST", headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+            print(
+                f"\n[MODSYNC] Notified {reload_url}: version={payload.get('version')} "
+                f"(broadcast={payload.get('notified_clients', 0)} client(s))"
+            )
+    except urllib.error.URLError as exc:
+        print(f"\n[MODSYNC] Skipped reload notification ({reload_url} unreachable: {exc.reason})")
+    except Exception as exc:
+        print(f"\n[MODSYNC] Reload notification failed: {exc}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Sync Minecraft server mods from server/modpack/ and notify modsync-api."
+    )
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files")
-    parser.add_argument("--restart", action="store_true", help="Restart Docker server if server mods changed")
-    parser.add_argument("--client-path", type=Path, default=DEFAULT_CLIENT_MODS_DIR, help="Custom client mods folder path")
-    parser.add_argument("--skip-client", action="store_true", help="Do not sync client mods")
+    parser.add_argument("--restart", action="store_true", help="Restart Docker Minecraft server if server mods changed")
+    parser.add_argument(
+        "--client-path",
+        type=Path,
+        default=Path(os.environ["MODRINTH_CLIENT_MODS"]) if "MODRINTH_CLIENT_MODS" in os.environ else None,
+        help="Optional local client mods folder path (for direct host testing only)",
+    )
+    parser.add_argument(
+        "--modsync-url",
+        default=os.environ.get("MODSYNC_API_URL", "http://127.0.0.1:8080"),
+        help="modsync-api base URL to notify on changes (default: http://127.0.0.1:8080)",
+    )
+    parser.add_argument("--no-notify", action="store_true", help="Do not call modsync-api /api/reload")
     args = parser.parse_args()
 
     # 1. Sync Server (server-client + server-only)
@@ -101,36 +124,27 @@ def main():
         "Server",
         SERVER_MODS_DIR,
         [SERVER_CLIENT_DIR, SERVER_ONLY_DIR],
-        dry_run=args.dry_run
+        dry_run=args.dry_run,
     )
 
-    # 2. Sync Client (server-client + client-only)
-    client_missing = False
-    if not args.skip_client:
-        if args.client_path.exists():
-            sync_target(
-                "Client (Modrinth)",
-                args.client_path,
-                [SERVER_CLIENT_DIR, CLIENT_ONLY_DIR],
-                dry_run=args.dry_run
-            )
-        else:
-            client_missing = True
-            if not Path("/mnt/c/Users").exists() and args.client_path == DEFAULT_CLIENT_MODS_DIR:
-                print(f"\n[CLIENT] Error: /mnt/c/Users is not accessible (likely sandboxed) and fallback {args.client_path} does not exist.")
-                print("  -> Re-run outside the sandbox (BypassSandbox: true), or pass --skip-client / --client-path.")
-            else:
-                print(f"\n[CLIENT] Error: Directory not found: {args.client_path}")
-                print("  -> Pass --client-path <dir> or --skip-client if client sync is not needed.")
+    # 2. Optional local client path (only when explicitly configured)
+    if args.client_path is not None:
+        sync_target(
+            "Local Client",
+            args.client_path,
+            [SERVER_CLIENT_DIR, CLIENT_ONLY_DIR],
+            dry_run=args.dry_run,
+        )
 
     # 3. Optional server restart
     if args.restart and server_changed and not args.dry_run:
         print("\nRestarting Docker Minecraft server container...")
-        subprocess.run(["docker", "compose", "restart", "mc"], cwd=REPO_ROOT, check=True)
+        subprocess.run(["docker", "compose", "restart", "mc"], cwd=SERVER_ROOT, check=True)
         print("Server restarted successfully.")
 
-    if client_missing and not args.dry_run:
-        sys.exit(1)
+    # 4. Notify modsync-api to recompute manifest & push WebSocket updates to connected players
+    if not args.dry_run and not args.no_notify:
+        notify_modsync_api(args.modsync_url, os.environ.get("MODSYNC_ADMIN_TOKEN"))
 
 
 if __name__ == "__main__":

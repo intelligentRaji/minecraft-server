@@ -17,12 +17,14 @@ SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 def find_repo_root(start: Path | None = None) -> Path:
-    """Walk upward from start to locate the repository root (containing docker-compose.yml)."""
+    """Walk upward from start to locate the server root (containing docker-compose.yml)."""
     origin = start if start is not None else Path(__file__).resolve().parent
     for candidate in (origin, *origin.parents):
+        if (candidate / "server" / "docker-compose.yml").is_file():
+            return candidate / "server"
         if (candidate / "docker-compose.yml").is_file():
             return candidate
-    raise RuntimeError(f"Could not locate repository root (docker-compose.yml) above {origin}")
+    raise RuntimeError(f"Could not locate server root (docker-compose.yml) above {origin}")
 
 
 REPO_ROOT = find_repo_root()

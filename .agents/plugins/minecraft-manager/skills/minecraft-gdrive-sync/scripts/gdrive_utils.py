@@ -14,12 +14,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 def find_repo_root() -> Path:
-    """Dynamically finds the repository root by locating .git or docker-compose.yml."""
+    """Dynamically finds the server root containing docker-compose.yml."""
     p = Path(__file__).resolve().parent
     for parent in [p] + list(p.parents):
-        if (parent / ".git").exists() or (parent / "docker-compose.yml").exists():
+        if (parent / "server" / "docker-compose.yml").is_file():
+            return parent / "server"
+        if (parent / "docker-compose.yml").is_file():
             return parent
-    raise RuntimeError("Could not determine repository root (missing .git or docker-compose.yml)")
+    raise RuntimeError("Could not determine server root (missing docker-compose.yml)")
 
 
 class GDriveClient:
