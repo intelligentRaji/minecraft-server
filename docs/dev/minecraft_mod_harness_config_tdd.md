@@ -3,7 +3,7 @@
 > **Companion To:**
 > - [mod_harness_architecture.md](./mod_harness_architecture.md) *(Per-Mod Vertical Slice Specification)*
 >
-> **Scope:** Repository-wide configuration synchronization (`docker-compose.yml` $\rightarrow$ `/sync_mod_configurations.py` $\rightarrow$ `mods/*/sync.py`), global skill discovery (`.agents/skills.json`), core plugin rules/skills (`.agents/plugins/minecraft-manager/`), and the four-agent mod onboarding pipeline.  
+> **Scope:** Repository-wide configuration synchronization (`docker-compose.yml` $\rightarrow$ `/sync_mod_configurations.py` $\rightarrow$ `server/mods/*/sync.py`), on-demand per-mod skill/rule loading (`minecraft-mod-configuration.md` + `minecraft-mod-harness-manager`), core plugin rules/skills (`.agents/plugins/minecraft-manager/`), and the four-agent mod onboarding pipeline.  
 > **Status:** Implemented & Verified (v10)
 
 ---
@@ -18,8 +18,8 @@
    - Core `server.properties` keys are managed via environment variables in [docker-compose.yml](file:///home/wakaria/dev/minecraft-server/docker-compose.yml) / `.env` (per [minecraft-server-operations.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/rules/minecraft-server-operations.md)).
 3. **Decoupled Per-Mod Slices (`mods/*/`):**
    - Each onboarded mod owns its own independent vertical slice (`configs/`, `sync.py`, `test_sync.py`, `AGENTS.md`, and `.agents/skills/<slug>-config/SKILL.md`), defined in [mod_harness_architecture.md](file:///home/wakaria/dev/minecraft-server/docs/dev/mod_harness_architecture.md).
-4. **Direct Skill Discovery (No Central Config Router):**
-   - Every mod's `.agents/skills` folder is registered directly in root [`.agents/skills.json`](file:///home/wakaria/dev/minecraft-server/.agents/skills.json), eliminating the need for a central `minecraft-config-manager` router skill.
+4. **On-Demand Per-Mod Skill & Rule Loading (No Global `.agents/skills.json`):**
+   - Antigravity launched from the repository root does not auto-discover `AGENTS.md` or `.agents/skills/` inside `server/mods/<slug>/` subfolders. Instead, the always-on rule [minecraft-mod-configuration.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/rules/minecraft-mod-configuration.md) and the `minecraft-mod-harness-manager` skill direct the agent to explicitly read and follow the target mod's `server/mods/<slug>/AGENTS.md` and `server/mods/<slug>/.agents/skills/<slug>-config/SKILL.md` on demand (without loading unrelated mods).
 
 ---
 
@@ -45,8 +45,8 @@ flowchart TD
     end
 
     subgraph GlobalAI["4. Global AI Platform (.agents/)"]
-        SkillsJSON[".agents/skills.json\n(Registers all mods/*/.agents/skills)"]
-        Plugin["minecraft-manager Plugin\n• rules/ (mod-installation, server-operations)\n• skills/ (mod-manager, mod-harness-manager, rcon, roles, perms, gdrive)\n• agents/ (4-agent onboarding pipeline)"]
+        ModConfigRule["rules/minecraft-mod-configuration.md\n(Requires on-demand loading of target mod harness)"]
+        Plugin["minecraft-manager Plugin\n• rules/ (mod-installation, server-operations, mod-configuration)\n• skills/ (mod-manager, mod-harness-manager, rcon, roles, perms, gdrive)\n• agents/ (4-agent onboarding pipeline)"]
     end
 
     RootSync -->|"Executes in sorted order"| ModA
@@ -57,10 +57,9 @@ flowchart TD
     ModB -->|"Atomic placement & merge"| DataDir
     ModN -->|"Atomic placement & merge"| DataDir
 
-    SkillsJSON -.->|"Exposes <slug>-config skills"| ModA
-    SkillsJSON -.->|"Exposes <slug>-config skills"| ModB
+    ModConfigRule -.->|"Loads target AGENTS.md & SKILL.md on demand"| ModA
+    ModConfigRule -.->|"Loads target AGENTS.md & SKILL.md on demand"| ModB
     Plugin -->|"Onboards / maintains / removes"| ModSlices
-    Plugin -->|"Updates entries[]"| SkillsJSON
 ```
 
 ---
@@ -74,7 +73,6 @@ flowchart TD
 ├── test_sync_mod_configurations.py              # Global runner test suite (4 tests)
 ├── Makefile                                     # Server lifecycle targets (up, down, restart, logs, sync, backup)
 ├── .agents/
-│   ├── skills.json                              # Root manifest registering all mods/<slug>/.agents/skills
 │   └── plugins/
 │       └── minecraft-manager/
 │           ├── plugin.json
@@ -84,10 +82,11 @@ flowchart TD
 │           │   ├── mod-bridge-engineer/
 │           │   │   └── agent.md                 # Stage 1: Non-AI Bridge (configs/, sync.py, test_sync.py)
 │           │   ├── mod-harness-architect/
-│           │   │   └── agent.md                 # Stage 2: AI Harness (AGENTS.md, SKILL.md, skills.json)
+│           │   │   └── agent.md                 # Stage 2: AI Harness (AGENTS.md, SKILL.md)
 │           │   └── mod-harness-reviewer/
 │           │       └── agent.md                 # Stage 3: End-to-End Auditor
 │           ├── rules/
+│           │   ├── minecraft-mod-configuration.md
 │           │   ├── minecraft-mod-installation.md
 │           │   └── minecraft-server-operations.md
 │           └── skills/
@@ -120,7 +119,7 @@ flowchart TD
 2. **Onboard Slice (`minecraft-mod-harness-manager`):**
    - Registers and invokes the `minecraft-mod-harness-manager` coordinator subagent via `define_subagent` / `invoke_subagent`.
    - **Stage 1 (`mod-bridge-engineer`):** Classifies `data/` files, seeds `mods/<slug>/configs/`, writes `mods/<slug>/sync.py` (with self-explanatory invariant errors and atomic `os.replace()` + `os.chown()`), and writes `mods/<slug>/test_sync.py`.
-   - **Stage 2 (`mod-harness-architect`):** Authors `mods/<slug>/AGENTS.md` (at mod root), `mods/<slug>/.agents/skills/<slug>-config/SKILL.md` (pure mod domain guide), and registers `{"path": "mods/<slug>/.agents/skills"}` in `.agents/skills.json`.
+   - **Stage 2 (`mod-harness-architect`):** Authors `server/mods/<slug>/AGENTS.md` (at mod root) and `server/mods/<slug>/.agents/skills/<slug>-config/SKILL.md` (pure mod domain guide).
    - **Stage 3 (`mod-harness-reviewer`):** Runs `test_sync.py` and `sync.py --dry-run` / `sync.py` idempotency checks, and audits both layers.
-3. **Maintain Slice:** Whenever `mods/<slug>/configs/` changes structurally (new files, new runtime/static keys, new invariants), `mods/<slug>/sync.py` and `mods/<slug>/test_sync.py` are updated and verified together.
-4. **Remove Slice:** `remove_mod_harness.py <slug>` unregisters the skill from `.agents/skills.json` and deletes `mods/<slug>/`.
+3. **Maintain Slice:** Whenever `server/mods/<slug>/configs/` changes structurally (new files, new runtime/static keys, new invariants), `server/mods/<slug>/sync.py` and `server/mods/<slug>/test_sync.py` are updated and verified together.
+4. **Remove Slice:** `remove_mod_harness.py <slug>` deletes `server/mods/<slug>/`.

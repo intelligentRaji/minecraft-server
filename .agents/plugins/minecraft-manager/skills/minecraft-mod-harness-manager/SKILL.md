@@ -10,25 +10,29 @@ description: >-
 
 # Minecraft Mod Bridge & AI Harness Lifecycle Runbook
 
-Procedure for configuring onboarded mods on demand and onboarding or removing a mod's vertical slice (`server/mods/<slug>/`) using the four-agent pipeline (`minecraft-mod-harness-manager` $\rightarrow$ `mod-bridge-engineer` $\rightarrow$ `mod-harness-architect` $\rightarrow$ `mod-harness-reviewer`).
+Lifecycle runbook for configuring onboarded mods on demand and onboarding, maintaining, or removing per-mod slices under `server/mods/<slug>/`.
 
 ---
 
-### Step 1: Onboard a Mod (Build Layer 1 Bridge + Layer 2 AI Harness)
+### Step 1: Configure an Onboarded Mod
+Before reading, editing, or answering questions about an onboarded mod under `server/mods/<slug>/configs/`:
+
+1. Read and follow the target mod's (avoiding unrelated mods' harnesses):
+   - `server/mods/<slug>/AGENTS.md` *(rules, invariants, excluded files/keys)*
+   - `server/mods/<slug>/.agents/skills/<slug>-config/SKILL.md` *(schemas, formatting, placeholders)*
+2. Edit static configs in `server/mods/<slug>/configs/`. If the change alters an invariant or tracked file/key enforced by `server/mods/<slug>/sync.py`, also follow **Step 3**.
+3. Run `python3 -m unittest server/mods/<slug>/test_sync.py -v` and `python3 server/mods/<slug>/sync.py --dry-run`, and tell the user if a `mc-forge-server` restart is required.
+
+---
+
+### Step 2: Onboard a Mod (Build Layer 1 Bridge + Layer 2 AI Harness)
 1. Ensure the mod has booted at least once on `mc-forge-server` so its default configuration files exist in `server/data/config/` or `server/data/world/serverconfig/`.
-2. Read the subagent definitions in:
-   - [minecraft-mod-harness-manager/agent.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/agents/minecraft-mod-harness-manager/agent.md) *(Coordinator)*
-   - [mod-bridge-engineer/agent.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/agents/mod-bridge-engineer/agent.md) *(Stage 1: Non-AI Bridge — `configs/`, `sync.py`, `test_sync.py`)*
-   - [mod-harness-architect/agent.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/agents/mod-harness-architect/agent.md) *(Stage 2: AI Harness — `server/mods/<slug>/AGENTS.md`, `server/mods/<slug>/.agents/skills/<slug>-config/SKILL.md`)*
-   - [mod-harness-reviewer/agent.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/agents/mod-harness-reviewer/agent.md) *(Stage 3: End-to-End Auditor)*
-3. Register `minecraft-mod-harness-manager` with `define_subagent` (`EnableSubagentTools: true`, `EnableWriteTools: false`) if not already registered in the session, and invoke it via `invoke_subagent` for `<slug>`:
-   - **Stage 1 (`mod-bridge-engineer`):** Builds the non-AI Mod Bridge (`server/mods/<slug>/configs/`, `server/mods/<slug>/sync.py` executed by `mc-forge-server` on container start, and `server/mods/<slug>/test_sync.py`).
-   - **Stage 2 (`mod-harness-architect`):** Designs `server/mods/<slug>/AGENTS.md` (at the mod root) and `server/mods/<slug>/.agents/skills/<slug>-config/SKILL.md` (focused strictly on how to work with the mod and its configurations, with zero mention of bridges, harnesses, or syncing).
-   - **Stage 3 (`mod-harness-reviewer`):** Audits both Layer 1 and Layer 2.
+2. Read the coordinator definition in [minecraft-mod-harness-manager/agent.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/agents/minecraft-mod-harness-manager/agent.md) (and specialist definitions in [mod-bridge-engineer/agent.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/agents/mod-bridge-engineer/agent.md), [mod-harness-architect/agent.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/agents/mod-harness-architect/agent.md), [mod-harness-reviewer/agent.md](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/agents/mod-harness-reviewer/agent.md) as needed).
+3. Register `minecraft-mod-harness-manager` via `define_subagent` (`EnableSubagentTools: true`, `EnableWriteTools: false`) if not already registered, and invoke it via `invoke_subagent` for `<slug>`.
 
 ---
 
-### Step 2: Maintain `sync.py` & `test_sync.py` When `configs/` Evolves
+### Step 3: Maintain `sync.py` & `test_sync.py` When `configs/` Evolves
 For long-term maintainability, every structural or rule-level change to `server/mods/<slug>/configs/` should be covered in `server/mods/<slug>/sync.py` and `server/mods/<slug>/test_sync.py`:
 - **Config guardrail updates:** `server/mods/<slug>/sync.py` acts as a config guardrail—if fulfilling a user's configuration request legitimately requires changing a property or invariant enforced by `sync.py`, update `server/mods/<slug>/sync.py` and `server/mods/<slug>/test_sync.py` to match while preserving runtime-state isolation and secret guards.
 - **New or removed config files** (e.g., after a mod update): Update `STATIC_FILES` / mixed-file mappings and `FORBIDDEN_NAMES` in `server/mods/<slug>/sync.py`.
@@ -38,7 +42,7 @@ For long-term maintainability, every structural or rule-level change to `server/
 
 ---
 
-### Step 3: Remove a Mod Folder & AI Harness (On Mod Removal)
+### Step 4: Remove a Mod Folder & AI Harness (On Mod Removal)
 When a mod is uninstalled from `server/modpack/`, remove its `server/mods/<slug>/` directory:
 
 ```bash

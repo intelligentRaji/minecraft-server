@@ -64,9 +64,9 @@ If the newly installed mods generated new configuration files in `server/data/co
 After adding or removing a server mod (`server-client` or `server-only`) in `server/modpack/`:
 
 1. **After Installing a Server Mod:**
-   Activate the **`minecraft-mod-harness-manager`** skill to invoke the `minecraft-mod-harness-manager` subagent pipeline, which builds `server/mods/<slug>/` (`sync.py`, `configs/`, `AGENTS.md`, and `.agents/skills/<slug>-config/SKILL.md`).
+   Activate **`minecraft-mod-harness-manager`** to onboard `server/mods/<slug>/`.
 2. **After Removing a Server Mod:**
-   Activate the **`minecraft-mod-harness-manager`** skill (`remove_mod_harness.py <slug>`) to delete `server/mods/<slug>/`.
+   Activate **`minecraft-mod-harness-manager`** (`remove_mod_harness.py <slug>`) to delete `server/mods/<slug>/`.
 
 ---
 

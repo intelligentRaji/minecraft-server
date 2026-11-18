@@ -21,7 +21,7 @@ mods/<slug>/
 ├── test_sync.py                       # Automated unittest suite verifying sync.py without touching live data/
 │
 └── ─── LAYER 2: AI HARNESS (Pure Agent Rules & Domain Skill) ───────────────
-    ├── AGENTS.md                      # Mod-root rules auto-loaded when touching mods/<slug>/
+    ├── AGENTS.md                      # Mod-root rules loaded on demand via minecraft-mod-harness-manager
     └── .agents/
         └── skills/
             └── <slug>-config/
@@ -50,7 +50,7 @@ The Mod Bridge is **100% independent of AI**. It works identically for human dev
 The AI Harness wraps the mod's configuration files with progressive-disclosure instructions.
 
 1. **`mods/<slug>/AGENTS.md` (At Mod Root, Not Inside `.agents/`):**
-   - **Why at the mod root:** Antigravity's hierarchical rule discovery walks up from any edited file in `mods/<slug>/configs/` to load `mods/<slug>/AGENTS.md` automatically.
+   - **Why at the mod root (and loaded on demand):** Keeps mod rules separate from `.agents/skills/`. Because Antigravity launched from the repository root does not auto-discover `AGENTS.md` or `.agents/skills/` inside `server/mods/<slug>/` subfolders, `minecraft-mod-configuration.md` and `minecraft-mod-harness-manager` instruct the agent to explicitly read and follow the target mod's `AGENTS.md` and `<slug>-config/SKILL.md` on demand.
    - **Content:** Concise non-negotiable guardrails—configuration scope, required server invariants, and forbidden runtime/secret files or keys.
 2. **`mods/<slug>/.agents/skills/<slug>-config/SKILL.md` (Pure Mod-Domain Skill):**
    - **Why zero Python scripts inside `.agents/`:** Keeps `.agents/` strictly to AI instructions; all executable code lives in Layer 1.
@@ -70,8 +70,8 @@ Before creating `mods/<slug>/configs/` and `mods/<slug>/sync.py`, every file bel
 
 ---
 
-## 4. Reference Implementation: `mods/paradigm/`
+## 4. Reference Implementation: `server/mods/paradigm/`
 
-[mods/paradigm/](file:///home/wakaria/dev/minecraft-server/mods/paradigm) serves as the reference implementation of this specification:
-- **Layer 1:** `configs/` (17 pure static JSONs + sanitized `cooldowns.json` and `holograms.json`), [sync.py](file:///home/wakaria/dev/minecraft-server/mods/paradigm/sync.py) (atomic copies + key-level merges + LuckPerms/formatting invariants + secret scan), and [test_sync.py](file:///home/wakaria/dev/minecraft-server/mods/paradigm/test_sync.py) (8 passing tests).
-- **Layer 2:** [AGENTS.md](file:///home/wakaria/dev/minecraft-server/mods/paradigm/AGENTS.md) at mod root and [SKILL.md](file:///home/wakaria/dev/minecraft-server/mods/paradigm/.agents/skills/paradigm-config/SKILL.md) registered in [.agents/skills.json](file:///home/wakaria/dev/minecraft-server/.agents/skills.json).
+[server/mods/paradigm/](file:///home/wakaria/dev/minecraft-server/server/mods/paradigm) serves as the reference implementation of this specification:
+- **Layer 1:** `configs/` (17 pure static JSONs + sanitized `cooldowns.json` and `holograms.json`), [sync.py](file:///home/wakaria/dev/minecraft-server/server/mods/paradigm/sync.py) (atomic copies + key-level merges + LuckPerms/formatting invariants + secret scan), and [test_sync.py](file:///home/wakaria/dev/minecraft-server/server/mods/paradigm/test_sync.py) (8 passing tests).
+- **Layer 2:** [AGENTS.md](file:///home/wakaria/dev/minecraft-server/server/mods/paradigm/AGENTS.md) at mod root and [SKILL.md](file:///home/wakaria/dev/minecraft-server/server/mods/paradigm/.agents/skills/paradigm-config/SKILL.md), loaded on demand via `minecraft-mod-harness-manager`.
