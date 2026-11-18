@@ -3,7 +3,7 @@
 > **Companion To:**
 > - [mod_harness_architecture.md](./mod_harness_architecture.md) *(Per-Mod Vertical Slice Specification)*
 >
-> **Scope:** Repository-wide configuration synchronization (`docker-compose.yml` $\rightarrow$ `/sync_mod_configurations.py` $\rightarrow$ `server/mods/*/sync.py`), on-demand per-mod skill/rule loading (`minecraft-mod-configuration.md` + `minecraft-mod-harness-manager`), core plugin rules/skills (`.agents/plugins/minecraft-manager/`), and the four-agent mod onboarding pipeline.  
+> **Scope:** Repository-wide configuration synchronization (`docker-compose.yml` $\rightarrow$ `/sync_mod_configurations.py` $\rightarrow$ `server/mods/*/sync.py`), on-demand per-mod skill/rule loading (`minecraft-mod-configuration.md` + `minecraft-mod-harness-manager`), core plugin rules/skills (`.agents/plugins/minecraft-manager/`), and the five-agent mod onboarding pipeline.  
 > **Status:** Implemented & Verified (v10)
 
 ---
@@ -46,7 +46,7 @@ flowchart TD
 
     subgraph GlobalAI["4. Global AI Platform (.agents/)"]
         ModConfigRule["rules/minecraft-mod-configuration.md\n(Requires on-demand loading of target mod harness)"]
-        Plugin["minecraft-manager Plugin\n• rules/ (mod-installation, server-operations, mod-configuration)\n• skills/ (mod-manager, mod-harness-manager, rcon, roles, perms, gdrive)\n• agents/ (4-agent onboarding pipeline)"]
+        Plugin["minecraft-manager Plugin\n• rules/ (mod-installation, server-operations, mod-configuration)\n• skills/ (mod-manager, mod-harness-manager, rcon, roles, perms, gdrive)\n• agents/ (5-agent onboarding pipeline)"]
     end
 
     RootSync -->|"Executes in sorted order"| ModA
@@ -76,15 +76,17 @@ flowchart TD
 │   └── plugins/
 │       └── minecraft-manager/
 │           ├── plugin.json
-│           ├── agents/                          # Mod-agnostic 4-agent onboarding pipeline
+│           ├── agents/                          # Mod-agnostic 5-agent onboarding pipeline
 │           │   ├── minecraft-mod-harness-manager/
 │           │   │   └── agent.md                 # Coordinator & Researcher
 │           │   ├── mod-bridge-engineer/
 │           │   │   └── agent.md                 # Stage 1: Non-AI Bridge (configs/, sync.py, test_sync.py)
+│           │   ├── mod-bridge-reviewer/
+│           │   │   └── agent.md                 # Stage 2: Layer 1 Security & Completeness Auditor
 │           │   ├── mod-harness-architect/
-│           │   │   └── agent.md                 # Stage 2: AI Harness (AGENTS.md, SKILL.md)
+│           │   │   └── agent.md                 # Stage 3: AI Harness (AGENTS.md, SKILL.md)
 │           │   └── mod-harness-reviewer/
-│           │       └── agent.md                 # Stage 3: End-to-End Auditor
+│           │       └── agent.md                 # Stage 4: Layer 2 AI Harness Auditor
 │           ├── rules/
 │           │   ├── minecraft-mod-configuration.md
 │           │   ├── minecraft-mod-installation.md
@@ -118,8 +120,9 @@ flowchart TD
 1. **Install Mod (`minecraft-mod-manager`):** Downloads `.jar` into `modpack/`, syncs to `data/mods/`, and boots `mc-forge-server` so the mod generates its default configs in `data/`.
 2. **Onboard Slice (`minecraft-mod-harness-manager`):**
    - Registers and invokes the `minecraft-mod-harness-manager` coordinator subagent via `define_subagent` / `invoke_subagent`.
-   - **Stage 1 (`mod-bridge-engineer`):** Classifies `data/` files, seeds `mods/<slug>/configs/`, writes `mods/<slug>/sync.py` (with self-explanatory invariant errors and atomic `os.replace()` + `os.chown()`), and writes `mods/<slug>/test_sync.py`.
-   - **Stage 2 (`mod-harness-architect`):** Authors `server/mods/<slug>/AGENTS.md` (at mod root) and `server/mods/<slug>/.agents/skills/<slug>-config/SKILL.md` (pure mod domain guide).
-   - **Stage 3 (`mod-harness-reviewer`):** Runs `test_sync.py` and `sync.py --dry-run` / `sync.py` idempotency checks, and audits both layers.
+   - **Stage 1 (`mod-bridge-engineer`):** Classifies `server/data/` files, seeds `server/mods/<slug>/configs/`, writes `server/mods/<slug>/sync.py` (with self-explanatory invariant errors and atomic `os.replace()` + `os.chown()`), and writes `server/mods/<slug>/test_sync.py`.
+   - **Stage 2 (`mod-bridge-reviewer`):** Audits Layer 1 (`configs/`, `sync.py`, `test_sync.py`) for security/runtime-state isolation, configuration completeness against `server/data/`, unit tests, and `--dry-run` / idempotency.
+   - **Stage 3 (`mod-harness-architect`):** Authors `server/mods/<slug>/AGENTS.md` (at mod root) and `server/mods/<slug>/.agents/skills/<slug>-config/SKILL.md` (pure mod domain guide).
+   - **Stage 4 (`mod-harness-reviewer`):** Audits Layer 2 (`AGENTS.md` security/invariant coverage and `SKILL.md` instruction clarity and domain hygiene).
 3. **Maintain Slice:** Whenever `server/mods/<slug>/configs/` changes structurally (new files, new runtime/static keys, new invariants), `server/mods/<slug>/sync.py` and `server/mods/<slug>/test_sync.py` are updated and verified together.
 4. **Remove Slice:** `remove_mod_harness.py <slug>` deletes `server/mods/<slug>/`.

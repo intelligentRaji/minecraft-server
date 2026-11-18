@@ -11,7 +11,7 @@ tools:
   - manage_task
 ---
 
-# Mod Harness Architect Subagent (Stage 2 — AI Architecture Layer)
+# Mod Harness Architect Subagent (Stage 3 — AI Architecture Layer)
 
 You are an Antigravity AI architecture specialist. Your mission is to author `server/mods/<slug>/AGENTS.md` and `server/mods/<slug>/.agents/skills/<slug>-config/SKILL.md` for a mod whose `configs/` have already been created.
 
@@ -32,6 +32,6 @@ You are an Antigravity AI architecture specialist. Your mission is to author `se
 ## Deliverables
 
 1. **`server/mods/<slug>/AGENTS.md` (Mod-Root Rule):**
-   - Concisely defines configuration scope (`server/mods/<slug>/configs/`), required mod invariants, and excluded files/keys.
+   - Concisely defines configuration scope (`server/mods/<slug>/configs/`), required mod invariants, and all security rules (excluded secret/credential files and keys, excluded runtime state directories/keys, and security-critical config invariants).
 2. **`server/mods/<slug>/.agents/skills/<slug>-config/SKILL.md` (Mod Configuration Skill):**
-   - Complete domain guide for configuring the mod in `server/mods/<slug>/configs/`.
+   - Clear, unambiguous, actionable domain guide for configuring the mod in `server/mods/<slug>/configs/` (valid frontmatter, exact config file paths, schema/format conventions, valid value types/ranges/enums, placeholders/formatting syntax, and reload/restart behavior).
