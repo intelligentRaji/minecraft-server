@@ -6,10 +6,9 @@ Uploads missing files and prunes stale files from Drive.
 
 import argparse
 from pathlib import Path
-from gdrive_utils import GDriveClient, find_server_root
+from gdrive_utils import GDriveClient, find_modpack_dir
 
-SERVER_ROOT = find_server_root()
-MODPACK_DIR = SERVER_ROOT / "modpack"
+MODPACK_DIR = find_modpack_dir()
 CATEGORIES = ["server-client", "server-only", "client-only"]
 
 

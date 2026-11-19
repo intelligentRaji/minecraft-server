@@ -4,15 +4,15 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    MODPACK_DIR=/modpack \
-    MODSYNC_HOST=0.0.0.0 \
-    MODSYNC_PORT=8080
+    MODPACK_DIR=/modpack
 
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir .
-
 COPY app ./app
+RUN pip install --no-cache-dir . && \
+    adduser --system --no-create-home --group appuser
+
+USER appuser
 
 EXPOSE 8080
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips=*"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--ws-max-size", "4096"]

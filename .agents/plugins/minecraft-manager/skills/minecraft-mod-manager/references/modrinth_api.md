@@ -62,5 +62,5 @@ Use the bundled script instead of raw HTTP calls when possible:
 python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug>
 
 # Query and directly download to target category folder:
-python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug> --download-to server/modpack/server-client
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug> --download-to modpack/server-client
 ```

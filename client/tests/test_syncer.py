@@ -35,16 +35,17 @@ class FakeTransport:
         raise FileNotFoundError(f"Unexpected download URL: {url}")
 
 
-def _manifest_for(files: dict[str, bytes], version: str = "v1") -> dict:
+def _manifest_for(files: dict[str, tuple[str, bytes]] | dict[str, bytes], version: str = "v1") -> dict:
     mods = []
-    for name, payload in sorted(files.items()):
+    for name, value in sorted(files.items()):
+        category, payload = value if isinstance(value, tuple) else ("server-client", value)
         mods.append(
             {
                 "filename": name,
-                "category": "server-client",
+                "category": category,
                 "sha256": hashlib.sha256(payload).hexdigest(),
                 "size": len(payload),
-                "url": f"/api/mods/server-client/{name}",
+                "url": f"/api/mods/{category}/{name}",
             }
         )
     return {"version": version, "mods": mods}
@@ -177,6 +178,60 @@ class SyncerTests(unittest.TestCase):
                     ],
                 }
             )
+
+    def test_sync_once_skips_client_only_until_install_recommended(self) -> None:
+        manifest = _manifest_for(
+            {
+                "create.jar": ("server-client", b"create-v1"),
+                "oculus.jar": ("client-only", b"oculus-v1"),
+            },
+            version="v1",
+        )
+        transport = FakeTransport(
+            manifest,
+            {"create.jar": b"create-v1", "oculus.jar": b"oculus-v1"},
+        )
+        syncer = ModSyncer(
+            server_url="https://mods.example.com",
+            mods_dir=self.mods_dir,
+            staging_dir=self.staging_dir,
+            transport=transport,
+            mc_running_check=lambda: False,
+        )
+
+        # Auto-sync installs only server-client mods
+        res = syncer.sync_once()
+        self.assertEqual(res.status, SyncStatus.SYNCED)
+        self.assertEqual(res.added, ("create.jar",))
+        self.assertTrue((self.mods_dir / "create.jar").is_file())
+        self.assertFalse((self.mods_dir / "oculus.jar").exists())
+
+        # Clicking "Install Recommended Client Mods" installs client-only mods
+        rec_res = syncer.install_recommended()
+        self.assertEqual(rec_res.status, SyncStatus.SYNCED)
+        self.assertEqual(rec_res.added, ("oculus.jar",))
+        self.assertTrue((self.mods_dir / "oculus.jar").is_file())
+
+        # Subsequent server-client syncs preserve already-installed client-only mods
+        res2 = syncer.sync_once()
+        self.assertEqual(res2.removed, ())
+        self.assertTrue((self.mods_dir / "oculus.jar").is_file())
+
+        # Upgrading/replacing a client-only jar replaces the old jar while keeping server-client mods
+        transport.manifest_payload = _manifest_for(
+            {
+                "create.jar": ("server-client", b"create-v1"),
+                "oculus-v2.jar": ("client-only", b"oculus-v2"),
+            },
+            version="v1",
+        )
+        transport.files["oculus-v2.jar"] = b"oculus-v2"
+        rec_res2 = syncer.install_recommended()
+        self.assertEqual(rec_res2.added, ("oculus-v2.jar",))
+        self.assertEqual(rec_res2.removed, ("oculus.jar",))
+        self.assertFalse((self.mods_dir / "oculus.jar").exists())
+        self.assertEqual((self.mods_dir / "oculus-v2.jar").read_bytes(), b"oculus-v2")
+        self.assertTrue((self.mods_dir / "create.jar").is_file())
 
 
 if __name__ == "__main__":

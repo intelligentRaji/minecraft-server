@@ -43,7 +43,7 @@ For long-term maintainability, every structural or rule-level change to `server/
 ---
 
 ### Step 4: Remove a Mod Folder & AI Harness (On Mod Removal)
-When a mod is uninstalled from `server/modpack/`, remove its `server/mods/<slug>/` directory:
+When a mod is uninstalled from `modpack/`, remove its `server/mods/<slug>/` directory:
 
 ```bash
 # Preview removal:

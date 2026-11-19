@@ -5,15 +5,19 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 ClientCategory = Literal["server-client", "client-only"]
-CLIENT_CATEGORIES: tuple[ClientCategory, ...] = ("server-client", "client-only")
+CLIENT_CATEGORIES: tuple[ClientCategory, ...] = get_args(ClientCategory)
 SAFE_JAR_NAME_RE = re.compile(r"^[A-Za-z0-9._+-]+\.jar$")
 HASH_CHUNK_SIZE = 1024 * 1024
+MANIFEST_SCHEMA_VERSION = 1
+VERSION_HASH_LENGTH = 16
+MOD_DOWNLOAD_PREFIX = "/api/mods"
 
 
 @dataclass(frozen=True)
@@ -35,17 +39,33 @@ class Manifest:
     """Immutable snapshot of all client-facing mods."""
 
     version: str
+    recommended_version: str
     generated_at: str
     mods: tuple[ModEntry, ...]
 
+    def find_mod(self, category: str, filename: str) -> ModEntry | None:
+        for mod in self.mods:
+            if mod.category == category and mod.filename == filename:
+                return mod
+        return None
+
     def to_dict(self) -> dict[str, object]:
         return {
-            "schema_version": 1,
+            "schema_version": MANIFEST_SCHEMA_VERSION,
             "version": self.version,
+            "recommended_version": self.recommended_version,
             "generated_at": self.generated_at,
             "mod_count": len(self.mods),
             "mods": [mod.to_dict() for mod in self.mods],
         }
+
+
+def _hash_mod_entries(mods: tuple[ModEntry, ...]) -> str:
+    payload = json.dumps(
+        [(m.category, m.filename, m.sha256, m.size) for m in mods],
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:VERSION_HASH_LENGTH]
 
 
 def compute_sha256(path: Path) -> str:
@@ -57,18 +77,37 @@ def compute_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def validate_jar_request(modpack_dir: Path, category: str, filename: str) -> Path | None:
-    """Resolve a client-downloadable .jar safely; return None if invalid or missing."""
+def _is_safe_jar_file(path: Path) -> bool:
+    return not path.is_symlink() and path.is_file() and bool(SAFE_JAR_NAME_RE.fullmatch(path.name))
+
+
+def _resolve_category_dir(modpack_dir: Path, category: str) -> Path | None:
     if category not in CLIENT_CATEGORIES:
         return None
+    raw_cat = modpack_dir / category
+    if raw_cat.is_symlink() or not raw_cat.is_dir():
+        return None
+    resolved_root = modpack_dir.resolve()
+    resolved_cat = raw_cat.resolve()
+    if not resolved_cat.is_relative_to(resolved_root):
+        return None
+    return resolved_cat
+
+
+def validate_jar_request(modpack_dir: Path, category: str, filename: str) -> Path | None:
+    """Resolve a client-downloadable .jar safely; return None if invalid or missing."""
     if not SAFE_JAR_NAME_RE.fullmatch(filename):
         return None
-
-    category_dir = (modpack_dir / category).resolve()
-    candidate = (category_dir / filename).resolve()
-    if candidate.parent != category_dir:
+    category_dir = _resolve_category_dir(modpack_dir, category)
+    if category_dir is None:
         return None
-    if candidate.is_symlink() or not candidate.is_file():
+
+    raw_candidate = category_dir / filename
+    if not _is_safe_jar_file(raw_candidate):
+        return None
+
+    candidate = raw_candidate.resolve()
+    if candidate.parent != category_dir:
         return None
     return candidate
 
@@ -78,69 +117,77 @@ class ManifestStore:
 
     def __init__(self, modpack_dir: Path) -> None:
         self.modpack_dir = modpack_dir
+        self._lock = threading.RLock()
         self._stat_cache: dict[tuple[str, str], tuple[int, int, str]] = {}
         self._current: Manifest | None = None
 
     @property
     def current(self) -> Manifest:
-        if self._current is None:
-            self._current, _ = self.refresh()
-        return self._current
+        with self._lock:
+            if self._current is None:
+                self._current, _ = self.refresh()
+            return self._current
 
     def refresh(self) -> tuple[Manifest, bool]:
         """Re-scan modpack directories, hashing only added or modified .jar files."""
-        entries_by_name: dict[str, ModEntry] = {}
-        seen_keys: set[tuple[str, str]] = set()
+        with self._lock:
+            entries_by_key: dict[tuple[ClientCategory, str], ModEntry] = {}
+            seen_keys: set[tuple[str, str]] = set()
 
-        for category in CLIENT_CATEGORIES:
-            cat_dir = self.modpack_dir / category
-            if not cat_dir.is_dir():
-                continue
-
-            for entry in sorted(cat_dir.iterdir(), key=lambda p: p.name):
-                if entry.is_symlink() or not entry.is_file():
-                    continue
-                if not SAFE_JAR_NAME_RE.fullmatch(entry.name):
+            for category in CLIENT_CATEGORIES:
+                cat_dir = _resolve_category_dir(self.modpack_dir, category)
+                if cat_dir is None:
                     continue
 
-                stat_res = entry.stat()
-                cache_key = (category, entry.name)
-                seen_keys.add(cache_key)
-                cached = self._stat_cache.get(cache_key)
-                if cached is not None and cached[0] == stat_res.st_size and cached[1] == stat_res.st_mtime_ns:
-                    sha256 = cached[2]
-                else:
-                    sha256 = compute_sha256(entry)
-                    self._stat_cache[cache_key] = (stat_res.st_size, stat_res.st_mtime_ns, sha256)
+                for entry in sorted(cat_dir.iterdir(), key=lambda p: p.name):
+                    if not _is_safe_jar_file(entry):
+                        continue
 
-                entries_by_name[entry.name] = ModEntry(
-                    filename=entry.name,
-                    category=category,
-                    sha256=sha256,
-                    size=stat_res.st_size,
-                    url=f"/api/mods/{category}/{entry.name}",
-                )
+                    stat_res = entry.stat()
+                    cache_key = (category, entry.name)
+                    seen_keys.add(cache_key)
+                    cached = self._stat_cache.get(cache_key)
+                    if cached is not None and cached[0] == stat_res.st_size and cached[1] == stat_res.st_mtime_ns:
+                        sha256 = cached[2]
+                    else:
+                        sha256 = compute_sha256(entry)
+                        self._stat_cache[cache_key] = (stat_res.st_size, stat_res.st_mtime_ns, sha256)
 
-        # Prune removed files from cache
-        for stale_key in list(self._stat_cache.keys()):
-            if stale_key not in seen_keys:
-                del self._stat_cache[stale_key]
+                    entries_by_key[(category, entry.name)] = ModEntry(
+                        filename=entry.name,
+                        category=category,
+                        sha256=sha256,
+                        size=stat_res.st_size,
+                        url=f"{MOD_DOWNLOAD_PREFIX}/{category}/{entry.name}",
+                    )
 
-        sorted_mods = tuple(entries_by_name[name] for name in sorted(entries_by_name))
-        version_payload = json.dumps(
-            [(m.category, m.filename, m.sha256, m.size) for m in sorted_mods],
-            separators=(",", ":"),
-        ).encode("utf-8")
-        version_hash = hashlib.sha256(version_payload).hexdigest()[:16]
+            for stale_key in list(self._stat_cache.keys()):
+                if stale_key not in seen_keys:
+                    del self._stat_cache[stale_key]
 
-        prev_version = self._current.version if self._current is not None else None
-        if prev_version == version_hash and self._current is not None:
-            return self._current, False
+            sorted_mods = tuple(
+                entries_by_key[key]
+                for key in sorted(entries_by_key, key=lambda item: (item[1], item[0]))
+            )
+            server_mods = tuple(m for m in sorted_mods if m.category == "server-client")
+            recommended_mods = tuple(m for m in sorted_mods if m.category == "client-only")
+            version_hash = _hash_mod_entries(server_mods)
+            recommended_hash = _hash_mod_entries(recommended_mods)
 
-        manifest = Manifest(
-            version=version_hash,
-            generated_at=datetime.now(timezone.utc).isoformat(),
-            mods=sorted_mods,
-        )
-        self._current = manifest
-        return manifest, (prev_version is not None and prev_version != version_hash)
+            prev_version = self._current.version if self._current is not None else None
+            prev_recommended = self._current.recommended_version if self._current is not None else None
+            if (
+                self._current is not None
+                and prev_version == version_hash
+                and prev_recommended == recommended_hash
+            ):
+                return self._current, False
+
+            manifest = Manifest(
+                version=version_hash,
+                recommended_version=recommended_hash,
+                generated_at=datetime.now(timezone.utc).isoformat(),
+                mods=sorted_mods,
+            )
+            self._current = manifest
+            return manifest, (prev_version is not None and prev_version != version_hash)

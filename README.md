@@ -2,7 +2,8 @@
 
 This monorepo contains:
 - **`docker-compose.yml` & `.env`** — Root Docker Compose stack for the Forge 1.20.1 Minecraft server ([`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-server)), `modsync-api`, and the WireGuard tunnel (`wireguard/`).
-- **`server/`** — Minecraft server runtime (`server/data/`), per-mod configuration bridges (`server/mods/`), and modpack jars (`server/modpack/`).
+- **`server/`** — Minecraft server runtime (`server/data/`), per-mod configuration bridges (`server/mods/`), and container sync scripts.
+- **`modpack/`** — Shared modpack `.jar` artifacts (`server-client/`, `server-only/`, `client-only/`).
 - **`modsync_api/`** — FastAPI WebSocket + HTTP distribution service (`modsync-api`).
 - **`client/`** — Standalone Python background synchronizer & system tray app (`modsync-client`) that players install to automatically stay in sync with the server over WebSocket (`wss://`) + HTTPS.
 
@@ -25,11 +26,11 @@ You can manage the server using `make` commands or direct `docker compose` comma
 | :--- | :--- |
 | `make up` | Start Minecraft server + `modsync-api` + WireGuard |
 | `make down` | Stop server stack |
-| `make restart` | Restart Minecraft server container |
+| `make restart` | Ensure `modsync-api` is healthy and restart Minecraft server (syncs server mods & configs) |
+| `make reload` | Refresh `modsync-api` manifest without restarting `mc` (for `client-only` changes; no WS push) |
 | `make logs` | Follow Minecraft server logs in real-time |
 | `make modsync-logs` | Follow `modsync-api` WebSocket/HTTP logs |
 | `make status` | View container status |
-| `make sync` | Sync `server/modpack/` to `server/data/mods/`, restart `mc` if changed, and broadcast WebSocket update |
 | `make sync-dry` | Preview server mod synchronization without touching files |
 | `make backup` | Upload current modpack to Google Drive |
 | `make test` | Run unit tests across server config runner, `modsync_api`, and `client` |
@@ -77,34 +78,37 @@ docker compose down
 
 ## Managing Mods
 
-Mods are organized in `server/modpack/` by target:
+Mods are organized in `modpack/` by target:
 
 ```text
 minecraft-server/
 ├── docker-compose.yml     # Root Compose stack (mc, modsync-api, wireguard)
 ├── .env                   # Secrets & environment overrides (from .env.example)
+├── modpack/               # Shared modpack .jar repository
+│   ├── server-client/     # Content mods required on BOTH server and client (e.g. Biomes O' Plenty, Twilight Forest)
+│   ├── server-only/       # Server-side mods (e.g. Spark, Chunky, admin tools)
+│   └── client-only/       # Client-side mods (e.g. Embeddium, Distant Horizons, Jade, JEI, Xaero's)
 ├── modsync_api/           # FastAPI WebSocket + HTTP manifest & jar server
 ├── client/                # Standalone Python tray/daemon client for players
 ├── wireguard/             # WireGuard tunnel configuration (gitignored)
 └── server/
     ├── data/              # Minecraft server runtime & worlds (gitignored)
-    ├── mods/              # Per-mod configuration bridges & sync script
-    └── modpack/
-        ├── server-client/ # Content mods required on BOTH server and client (e.g. Biomes O' Plenty, Twilight Forest)
-        ├── server-only/   # Server-side mods (e.g. Spark, Chunky, admin tools)
-        └── client-only/   # Client-side mods (e.g. Embeddium, Distant Horizons, Jade, JEI, Xaero's)
+    └── mods/              # Per-mod configuration bridges & sync script
 ```
 
 ### Synchronize Mods
 
-Run the sync script to distribute server mods to `server/data/mods/` and notify `modsync-api` so connected players update immediately:
+`mc-forge-server` automatically syncs `modpack/` (`server-client` + `server-only`) into `server/data/mods/` and notifies `modsync-api` on startup (failing fast if `modsync-api` is unavailable):
 
 ```bash
-# Preview what will be synced
-python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --dry-run
+# Preview what server mods will change
+make sync-dry
 
-# Synchronize server mods, restart mc if changed, and push WebSocket update
-python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
+# Restart mc to apply server-client/server-only mod changes and notify modsync-api
+make restart
+
+# Push client-only mod changes without restarting mc
+make reload
 ```
 
 ### Installed Mods

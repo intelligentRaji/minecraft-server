@@ -36,11 +36,13 @@ class ModSyncService:
             server_url=config.normalized_server_url,
             mods_dir=config.mods_path,
             staging_dir=self.staging_dir,
+            client_token=config.client_token,
         )
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stop_event: asyncio.Event | None = None
         self._sync_event: asyncio.Event | None = None
+        self._recommended_event: asyncio.Event | None = None
         self._sync_lock: asyncio.Lock | None = None
         self._last_result: SyncResult | None = None
 
@@ -58,6 +60,11 @@ class ModSyncService:
         if self._loop is not None and self._sync_event is not None:
             self._loop.call_soon_threadsafe(self._sync_event.set)
 
+    def request_install_recommended(self) -> None:
+        """Thread-safe trigger to install optional client-only mods on demand."""
+        if self._loop is not None and self._recommended_event is not None:
+            self._loop.call_soon_threadsafe(self._recommended_event.set)
+
     def stop(self) -> None:
         """Thread-safe request to shut down background loops."""
         if self._loop is not None and self._stop_event is not None:
@@ -71,22 +78,29 @@ class ModSyncService:
             server_url=new_config.normalized_server_url,
             mods_dir=new_config.mods_path,
             staging_dir=self.staging_dir,
+            client_token=new_config.client_token,
         )
         self._last_result = None
         self.request_sync()
 
-    async def _perform_sync(self, reason: str) -> None:
+    async def _run_sync_action(self, reason: str, action: Callable[[], SyncResult]) -> None:
         assert self._sync_lock is not None
         async with self._sync_lock:
             self._emit(SyncStatus.SYNCING, f"Checking mods ({reason})...", self._last_result)
             try:
-                result = await asyncio.to_thread(self.syncer.sync_once)
+                result = await asyncio.to_thread(action)
                 self._emit(result.status, result.message, result)
                 logger.info("Sync [%s]: %s", reason, result.message)
             except Exception as exc:
                 msg = f"Sync error: {exc}"
                 self._emit(SyncStatus.ERROR, msg, self._last_result)
                 logger.warning("Sync [%s] failed: %s", reason, exc)
+
+    async def _perform_sync(self, reason: str) -> None:
+        await self._run_sync_action(reason, self.syncer.sync_once)
+
+    async def _perform_recommended_install(self) -> None:
+        await self._run_sync_action("recommended", self.syncer.install_recommended)
 
     async def _ws_loop(self) -> None:
         assert self._stop_event is not None
@@ -153,6 +167,7 @@ class ModSyncService:
     async def _poll_and_stage_loop(self) -> None:
         assert self._stop_event is not None
         assert self._sync_event is not None
+        assert self._recommended_event is not None
         elapsed = 0.0
         tick = 5.0
         while not self._stop_event.is_set():
@@ -160,6 +175,11 @@ class ModSyncService:
                 self._sync_event.clear()
                 elapsed = 0.0
                 await self._perform_sync("manual")
+                continue
+
+            if self._recommended_event.is_set():
+                self._recommended_event.clear()
+                await self._perform_recommended_install()
                 continue
 
             if (
@@ -179,9 +199,10 @@ class ModSyncService:
                 await self._perform_sync("poll")
 
             sync_wait = asyncio.create_task(self._sync_event.wait())
+            rec_wait = asyncio.create_task(self._recommended_event.wait())
             stop_wait = asyncio.create_task(self._stop_event.wait())
             done, pending = await asyncio.wait(
-                {sync_wait, stop_wait},
+                {sync_wait, rec_wait, stop_wait},
                 timeout=tick,
                 return_when=asyncio.FIRST_COMPLETED,
             )
@@ -195,6 +216,7 @@ class ModSyncService:
         self._loop = asyncio.get_running_loop()
         self._stop_event = asyncio.Event()
         self._sync_event = asyncio.Event()
+        self._recommended_event = asyncio.Event()
         self._sync_lock = asyncio.Lock()
 
         await self._perform_sync("startup")

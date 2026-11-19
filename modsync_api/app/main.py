@@ -5,52 +5,141 @@ from __future__ import annotations
 import asyncio
 import hmac
 import logging
+import math
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse, JSONResponse
 
-from .manifest import ManifestStore, validate_jar_request
+from .manifest import MOD_DOWNLOAD_PREFIX, Manifest, ManifestStore, validate_jar_request
 
 logger = logging.getLogger("modsync_api")
+
+BEARER_PREFIX = "bearer "
+DEFAULT_MODPACK_DIR = "/modpack"
+DEFAULT_WS_PING_INTERVAL = "25.0"
+JAR_CACHE_MAX_AGE_SECONDS = 3600
+JAR_MEDIA_TYPE = "application/java-archive"
+MAX_WS_CONNECTIONS = 100
+WS_SEND_TIMEOUT_SECONDS = 5.0
+WS_EVENT_HELLO = "hello"
+WS_EVENT_MODS_UPDATED = "mods_updated"
+WS_EVENT_PING = "ping"
+WS_EVENT_PONG = "pong"
+
+
+def _extract_bearer_token(authorization: str | None) -> str:
+    if authorization and authorization.lower().startswith(BEARER_PREFIX):
+        return authorization[len(BEARER_PREFIX) :].strip()
+    return ""
+
+
+def _tokens_match(provided: str | None, expected: str) -> bool:
+    if not provided or not expected:
+        return False
+    return hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
+
+
+def _verify_http_token(
+    provided: str | None,
+    expected: str,
+    *,
+    missing_detail: str,
+    invalid_detail: str,
+    www_authenticate: str | None = None,
+) -> None:
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=missing_detail,
+        )
+    if not _tokens_match(provided, expected):
+        headers = {"WWW-Authenticate": www_authenticate} if www_authenticate else None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=invalid_detail,
+            headers=headers,
+        )
+
+
+def _parse_positive_float(env_name: str, default: str) -> float:
+    raw = os.environ.get(env_name, default)
+    value = float(raw)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{env_name} must be a finite number > 0, got {raw!r}")
+    return value
+
+
+def _format_etag(value: str) -> str:
+    return f'"{value}"'
+
+
+def _manifest_event(event_type: str, manifest: Manifest) -> dict[str, Any]:
+    return {
+        "type": event_type,
+        "version": manifest.version,
+        "mod_count": len(manifest.mods),
+    }
 
 
 class ConnectionManager:
     """Tracks connected WebSocket clients and broadcasts modpack update events."""
 
-    def __init__(self) -> None:
-        self._connections: set[WebSocket] = set()
+    def __init__(self, max_connections: int = MAX_WS_CONNECTIONS) -> None:
+        self._max_connections = max_connections
+        self._connections: dict[WebSocket, asyncio.Lock] = {}
         self._lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket) -> bool:
         async with self._lock:
-            self._connections.add(websocket)
+            if len(self._connections) >= self._max_connections:
+                return False
+            self._connections[websocket] = asyncio.Lock()
+        try:
+            await websocket.accept()
+        except Exception:
+            await self.disconnect(websocket)
+            raise
+        return True
 
     async def disconnect(self, websocket: WebSocket) -> None:
         async with self._lock:
-            self._connections.discard(websocket)
+            self._connections.pop(websocket, None)
+
+    async def send_json(self, websocket: WebSocket, payload: dict[str, Any]) -> None:
+        async with self._lock:
+            send_lock = self._connections.get(websocket)
+        if send_lock is None:
+            raise WebSocketDisconnect()
+        async with send_lock:
+            await asyncio.wait_for(websocket.send_json(payload), timeout=WS_SEND_TIMEOUT_SECONDS)
 
     async def broadcast(self, payload: dict[str, Any]) -> int:
         async with self._lock:
-            targets = list(self._connections)
+            targets = list(self._connections.keys())
+        if not targets:
+            return 0
 
+        results = await asyncio.gather(
+            *(self.send_json(ws, payload) for ws in targets),
+            return_exceptions=True,
+        )
         notified = 0
         stale: list[WebSocket] = []
-        for ws in targets:
-            try:
-                await ws.send_json(payload)
-                notified += 1
-            except Exception:
+        for ws, outcome in zip(targets, results):
+            if isinstance(outcome, BaseException):
                 stale.append(ws)
+            else:
+                notified += 1
 
         if stale:
             async with self._lock:
                 for ws in stale:
-                    self._connections.discard(ws)
+                    self._connections.pop(ws, None)
         return notified
 
     @property
@@ -58,74 +147,50 @@ class ConnectionManager:
         return len(self._connections)
 
 
-def _is_loopback(host: str | None) -> bool:
-    return host in {"127.0.0.1", "::1", "localhost", "testclient"}
+async def _refresh_and_notify(
+    store: ManifestStore,
+    manager: ConnectionManager,
+) -> tuple[Manifest, bool, int]:
+    manifest, changed = await asyncio.to_thread(store.refresh)
+    notified = 0
+    if changed:
+        notified = await manager.broadcast(_manifest_event(WS_EVENT_MODS_UPDATED, manifest))
+    return manifest, changed, notified
 
 
-def create_app(
-    *,
-    modpack_dir: Path | None = None,
-    admin_token: str | None = None,
-    client_token: str | None = None,
-    watch_interval: float | None = None,
-    ws_ping_interval: float = 25.0,
-) -> FastAPI:
+def create_app() -> FastAPI:
     """Create configured FastAPI instance."""
-    resolved_modpack = modpack_dir or Path(os.environ.get("MODPACK_DIR", "/modpack"))
-    resolved_admin_token = admin_token if admin_token is not None else os.environ.get("MODSYNC_ADMIN_TOKEN", "")
-    resolved_client_token = client_token if client_token is not None else os.environ.get("MODSYNC_CLIENT_TOKEN", "")
-    resolved_watch = (
-        watch_interval
-        if watch_interval is not None
-        else float(os.environ.get("MODSYNC_WATCH_INTERVAL", "3.0"))
-    )
+    resolved_modpack = Path(os.environ.get("MODPACK_DIR", DEFAULT_MODPACK_DIR))
+    resolved_admin_token = os.environ.get("MODSYNC_ADMIN_TOKEN", "").strip()
+    resolved_client_token = os.environ.get("MODSYNC_CLIENT_TOKEN", "").strip()
+    ws_ping_interval = _parse_positive_float("MODSYNC_WS_PING_INTERVAL", DEFAULT_WS_PING_INTERVAL)
 
     store = ManifestStore(resolved_modpack)
     manager = ConnectionManager()
 
-    async def _watch_modpack_loop() -> None:
-        while True:
-            await asyncio.sleep(resolved_watch)
-            try:
-                manifest, changed = await asyncio.to_thread(store.refresh)
-                if changed:
-                    notified = await manager.broadcast(
-                        {
-                            "type": "mods_updated",
-                            "version": manifest.version,
-                            "mod_count": len(manifest.mods),
-                        }
-                    )
-                    logger.info(
-                        "Detected modpack change -> version=%s (%d mods), notified %d client(s)",
-                        manifest.version,
-                        len(manifest.mods),
-                        notified,
-                    )
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("Error while watching modpack directory")
-
     @asynccontextmanager
-    async def lifespan(_app: FastAPI):
+    async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
         await asyncio.to_thread(store.refresh)
-        watcher_task: asyncio.Task[None] | None = None
-        if resolved_watch > 0:
-            watcher_task = asyncio.create_task(_watch_modpack_loop())
-        try:
-            yield
-        finally:
-            if watcher_task is not None:
-                watcher_task.cancel()
-                try:
-                    await watcher_task
-                except asyncio.CancelledError:
-                    pass
+        yield
 
     fastapi_app = FastAPI(title="ModSync API", version="0.1.0", lifespan=lifespan)
-    fastapi_app.state.store = store
-    fastapi_app.state.manager = manager
+
+    def _require_client_auth(authorization: str | None = Header(default=None)) -> None:
+        _verify_http_token(
+            _extract_bearer_token(authorization),
+            resolved_client_token,
+            missing_detail="MODSYNC_CLIENT_TOKEN must be configured",
+            invalid_detail="Invalid or missing client token",
+            www_authenticate="Bearer",
+        )
+
+    def _require_admin_auth(x_admin_token: str | None = Header(default=None)) -> None:
+        _verify_http_token(
+            x_admin_token,
+            resolved_admin_token,
+            missing_detail="MODSYNC_ADMIN_TOKEN must be configured to use /api/reload",
+            invalid_detail="Invalid or missing X-Admin-Token",
+        )
 
     @fastapi_app.get("/health")
     async def health() -> dict[str, Any]:
@@ -137,15 +202,15 @@ def create_app(
             "connected_clients": manager.client_count,
         }
 
-    @fastapi_app.get("/api/manifest")
+    @fastapi_app.get("/api/manifest", dependencies=[Depends(_require_client_auth)])
     async def get_manifest(
-        response: Response,
         if_none_match: str | None = Header(default=None),
     ) -> Response:
         manifest = store.current
-        etag = f'"{manifest.version}"'
-        if if_none_match is not None and if_none_match.strip() in {etag, manifest.version}:
-            return Response(status_code=304, headers={"ETag": etag})
+        etag_value = f"{manifest.version}-{manifest.recommended_version}"
+        etag = _format_etag(etag_value)
+        if if_none_match is not None and if_none_match.strip() in {etag, etag_value}:
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
 
         return JSONResponse(
             content=manifest.to_dict(),
@@ -155,51 +220,28 @@ def create_app(
             },
         )
 
-    @fastapi_app.get("/api/mods/{category}/{filename}")
+    # category is str (not ClientCategory) so invalid categories return 404 rather than 422
+    @fastapi_app.get(f"{MOD_DOWNLOAD_PREFIX}/{{category}}/{{filename}}", dependencies=[Depends(_require_client_auth)])
     async def download_mod(category: str, filename: str) -> FileResponse:
         jar_path = validate_jar_request(resolved_modpack, category, filename)
         if jar_path is None:
-            raise HTTPException(status_code=404, detail="Mod file not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mod file not found")
 
-        manifest = store.current
-        etag = next((f'"{m.sha256}"' for m in manifest.mods if m.filename == filename and m.category == category), None)
-        headers = {"Cache-Control": "public, max-age=3600"}
-        if etag is not None:
-            headers["ETag"] = etag
+        entry = store.current.find_mod(category, filename)
+        headers = {"Cache-Control": f"public, max-age={JAR_CACHE_MAX_AGE_SECONDS}"}
+        if entry is not None:
+            headers["ETag"] = _format_etag(entry.sha256)
 
         return FileResponse(
             path=jar_path,
-            media_type="application/java-archive",
+            media_type=JAR_MEDIA_TYPE,
             filename=jar_path.name,
             headers=headers,
         )
 
-    @fastapi_app.post("/api/reload")
-    async def reload_manifest(
-        request: Request,
-        x_admin_token: str | None = Header(default=None),
-    ) -> dict[str, Any]:
-        if resolved_admin_token:
-            if not x_admin_token or not hmac.compare_digest(x_admin_token, resolved_admin_token):
-                raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Token")
-        else:
-            client_host = request.client.host if request.client else None
-            if not _is_loopback(client_host):
-                raise HTTPException(
-                    status_code=403,
-                    detail="Reload requires MODSYNC_ADMIN_TOKEN for non-loopback requests",
-                )
-
-        manifest, changed = await asyncio.to_thread(store.refresh)
-        notified = 0
-        if changed:
-            notified = await manager.broadcast(
-                {
-                    "type": "mods_updated",
-                    "version": manifest.version,
-                    "mod_count": len(manifest.mods),
-                }
-            )
+    @fastapi_app.post("/api/reload", dependencies=[Depends(_require_admin_auth)])
+    async def reload_manifest() -> dict[str, Any]:
+        manifest, changed, notified = await _refresh_and_notify(store, manager)
         return {
             "changed": changed,
             "version": manifest.version,
@@ -209,33 +251,30 @@ def create_app(
 
     @fastapi_app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
-        if resolved_client_token:
-            token = websocket.query_params.get("token")
-            auth_header = websocket.headers.get("authorization", "")
-            if not token and auth_header.lower().startswith("bearer "):
-                token = auth_header[7:].strip()
-            if not token or not hmac.compare_digest(token, resolved_client_token):
-                await websocket.close(code=1008, reason="Unauthorized")
-                return
-
-        await manager.connect(websocket)
-        try:
-            manifest = store.current
-            await websocket.send_json(
-                {
-                    "type": "hello",
-                    "version": manifest.version,
-                    "mod_count": len(manifest.mods),
-                }
+        if not resolved_client_token:
+            await websocket.close(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="MODSYNC_CLIENT_TOKEN must be configured",
             )
+            return
+        token = _extract_bearer_token(websocket.headers.get("authorization")) or websocket.query_params.get("token")
+        if not _tokens_match(token, resolved_client_token):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized")
+            return
+
+        if not await manager.connect(websocket):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Too many connections")
+            return
+        try:
+            await manager.send_json(websocket, _manifest_event(WS_EVENT_HELLO, store.current))
             while True:
                 try:
                     msg = await asyncio.wait_for(websocket.receive_text(), timeout=ws_ping_interval)
-                    if msg == "ping":
-                        await websocket.send_json({"type": "pong"})
-                except asyncio.TimeoutError:
-                    await websocket.send_json({"type": "ping"})
-        except WebSocketDisconnect:
+                    if msg == WS_EVENT_PING:
+                        await manager.send_json(websocket, {"type": WS_EVENT_PONG})
+                except TimeoutError:
+                    await manager.send_json(websocket, {"type": WS_EVENT_PING})
+        except (WebSocketDisconnect, TimeoutError, RuntimeError, OSError):
             pass
         finally:
             await manager.disconnect(websocket)

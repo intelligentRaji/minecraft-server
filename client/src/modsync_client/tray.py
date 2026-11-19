@@ -151,6 +151,7 @@ class ModSyncTrayApp:
         items = [
             pystray.MenuItem(lambda _item: f"Status: {self.status_text}", None, enabled=False),
             pystray.MenuItem("Sync Now", self._on_sync_now),
+            pystray.MenuItem("Install Recommended Client Mods", self._on_install_recommended),
             pystray.MenuItem("Open Mods Folder", self._on_open_folder),
             pystray.MenuItem("Configure...", self._on_configure),
         ]
@@ -183,6 +184,9 @@ class ModSyncTrayApp:
 
     def _on_sync_now(self, _icon: pystray.Icon, _item: pystray.MenuItem) -> None:
         self.service.request_sync()
+
+    def _on_install_recommended(self, _icon: pystray.Icon, _item: pystray.MenuItem) -> None:
+        self.service.request_install_recommended()
 
     def _on_open_folder(self, _icon: pystray.Icon, _item: pystray.MenuItem) -> None:
         _open_folder(self.config.mods_path)

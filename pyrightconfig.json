@@ -1,0 +1,25 @@
+{
+  "pythonVersion": "3.12",
+  "executionEnvironments": [
+    {
+      "root": "modsync_api",
+      "extraPaths": [
+        "modsync_api",
+        "modsync_api/.venv/lib/python3.12/site-packages"
+      ]
+    },
+    {
+      "root": "client",
+      "extraPaths": [
+        "client/src",
+        "client/.venv/lib/python3.12/site-packages"
+      ]
+    },
+    {
+      "root": "server/mods",
+      "extraPaths": [
+        "server/mods"
+      ]
+    }
+  ]
+}

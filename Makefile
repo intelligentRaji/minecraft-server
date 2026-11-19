@@ -1,7 +1,6 @@
-.PHONY: help up down restart logs modsync-logs status sync sync-dry backup lp-snapshot test client-build progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
+.PHONY: help up down restart reload logs modsync-logs status sync-dry backup lp-snapshot test client-build progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
 
 COMPOSE := docker compose
-SYNC_MODS := python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py
 SYNC_DRIVE := python3 .agents/plugins/minecraft-manager/skills/minecraft-gdrive-sync/scripts/sync_mods_drive.py
 LP_SNAPSHOT := python3 .agents/plugins/minecraft-manager/skills/minecraft-permission-manager/scripts/lp_snapshot.py
 RCON_CLI := python3 .agents/plugins/minecraft-manager/skills/minecraft-rcon/scripts/rcon.py
@@ -18,8 +17,14 @@ up: ## Start Minecraft server + ModSync API + WireGuard
 down: ## Stop server stack
 	$(COMPOSE) down
 
-restart: ## Restart Minecraft server container
+restart: ## Ensure modsync-api is running and restart Minecraft server (syncs server mods & configs)
+	$(COMPOSE) up -d --wait modsync-api
 	$(COMPOSE) restart mc
+
+reload: ## Refresh modsync-api manifest (pushes WS update only if server-client changed)
+	@token="$${MODSYNC_ADMIN_TOKEN:-}"; \
+	if [ -z "$$token" ] && [ -f .env ]; then token="$$(grep -E '^MODSYNC_ADMIN_TOKEN=' .env | head -n1 | cut -d= -f2-)"; fi; \
+	curl -fsS -X POST -H "X-Admin-Token: $$token" http://127.0.0.1:8080/api/reload && echo ""
 
 logs: ## Follow Minecraft server logs in real-time
 	$(COMPOSE) logs -f mc
@@ -30,11 +35,8 @@ modsync-logs: ## Follow ModSync API logs in real-time
 status: ## Show container status
 	$(COMPOSE) ps
 
-sync: ## Synchronize server mods, restart mc if changed, and push WebSocket update
-	$(SYNC_MODS) --restart
-
 sync-dry: ## Preview server mod synchronization without modifying files
-	$(SYNC_MODS) --dry-run
+	python3 server/sync_mods.py --dry-run --skip-api
 
 backup: ## Upload current modpack to Google Drive under minecraft-server/mods/
 	$(SYNC_DRIVE)
@@ -45,9 +47,9 @@ lp-snapshot: ## Export LuckPerms snapshot via RCON to server/mods/luckperms/conf
 	$(LP_SNAPSHOT)
 
 test: ## Run server, modsync-api, and client unit tests
-	python3 -m unittest discover -s server -p "test_sync_mod_configurations.py"
-	python3 -m unittest modsync_api/tests/test_manifest.py
-	python3 -m unittest client/tests/test_syncer.py
+	python3 -m unittest discover -s server -p "test_sync*.py"
+	uv --directory modsync_api run pytest -v
+	PYTHONPATH=client/src modsync_api/.venv/bin/pytest client/tests -v
 
 client-build: ## Build standalone client binary via PyInstaller
 	cd client && uv sync --group dev && uv run pyinstaller modsync.spec --clean --noconfirm

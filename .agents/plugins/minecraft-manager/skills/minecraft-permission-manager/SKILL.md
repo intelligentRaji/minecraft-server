@@ -41,13 +41,7 @@ Activate the **`minecraft-rcon`** skill to run the appropriate LuckPerms (`lp`) 
 ### Step 3: Export Versioned LuckPerms Snapshot to `server/mods/luckperms/configs/`
 To save a clean, Git-friendly snapshot of LuckPerms groups, tracks, and permissions (`users` stripped by default) into `server/mods/luckperms/configs/luckperms-snapshot.json`:
 
-1. Remove any stale export archive first (LuckPerms refuses to overwrite an existing `.json.gz`):
-   ```bash
-   python3 .agents/plugins/minecraft-manager/skills/minecraft-permission-manager/scripts/lp_snapshot.py --clean
-   ```
-2. Activate **`minecraft-rcon`** to run `lp export snapshot`.
-3. Extract and sanitize the snapshot into `server/mods/luckperms/configs/`:
-   ```bash
-   python3 .agents/plugins/minecraft-manager/skills/minecraft-permission-manager/scripts/lp_snapshot.py
-   ```
-   *(Pass `--keep-users` only when per-user records are intentionally needed.)*
+```bash
+make lp-snapshot
+```
+*(Or pass `--keep-users` directly to `lp_snapshot.py` only when per-user records are intentionally needed.)*

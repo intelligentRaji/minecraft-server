@@ -3,80 +3,156 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterator
 from pathlib import Path
-import sys
 
 import pytest
+from fastapi import status
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
-API_ROOT = Path(__file__).resolve().parents[1]
-if str(API_ROOT) not in sys.path:
-    sys.path.insert(0, str(API_ROOT))
+from app.main import create_app
 
-from app.main import create_app  # noqa: E402
+ADMIN_TOKEN = "secret-admin"
+CLIENT_TOKEN = "secret-client"
+ADMIN_HEADERS = {"X-Admin-Token": ADMIN_TOKEN}
+CLIENT_HEADERS = {"Authorization": f"Bearer {CLIENT_TOKEN}"}
+
+
+@pytest.fixture(autouse=True)
+def seeded_modpack_env(modpack_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (modpack_dir / "server-client" / "create.jar").write_bytes(b"create-jar-payload")
+    (modpack_dir / "client-only" / "oculus.jar").write_bytes(b"oculus-jar-payload")
+    (modpack_dir / "server-only" / "luckperms.jar").write_bytes(b"server-only-payload")
+
+    monkeypatch.setenv("MODPACK_DIR", str(modpack_dir))
+    monkeypatch.setenv("MODSYNC_ADMIN_TOKEN", ADMIN_TOKEN)
+    monkeypatch.setenv("MODSYNC_CLIENT_TOKEN", CLIENT_TOKEN)
 
 
 @pytest.fixture()
-def modpack_dir(tmp_path: Path) -> Path:
-    root = tmp_path / "modpack"
-    (root / "server-client").mkdir(parents=True)
-    (root / "client-only").mkdir(parents=True)
-    (root / "server-only").mkdir(parents=True)
-    (root / "server-client" / "create.jar").write_bytes(b"create-jar-payload")
-    (root / "client-only" / "oculus.jar").write_bytes(b"oculus-jar-payload")
-    (root / "server-only" / "luckperms.jar").write_bytes(b"server-only-payload")
-    return root
+def client() -> Iterator[TestClient]:
+    with TestClient(create_app()) as test_client:
+        yield test_client
 
 
-def test_manifest_etag_and_mod_download(modpack_dir: Path) -> None:
-    app = create_app(modpack_dir=modpack_dir, admin_token="secret-admin", watch_interval=0)
-    with TestClient(app) as client:
-        health = client.get("/health")
-        assert health.status_code == 200
-        assert health.json()["mod_count"] == 2
-
-        resp = client.get("/api/manifest")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["mod_count"] == 2
-        assert [m["filename"] for m in data["mods"]] == ["create.jar", "oculus.jar"]
-        etag = resp.headers["etag"]
-
-        not_modified = client.get("/api/manifest", headers={"If-None-Match": etag})
-        assert not_modified.status_code == 304
-
-        jar_resp = client.get("/api/mods/server-client/create.jar")
-        assert jar_resp.status_code == 200
-        assert jar_resp.content == b"create-jar-payload"
-        assert jar_resp.headers["etag"] == f'"{hashlib.sha256(b"create-jar-payload").hexdigest()}"'
-
-        # server-only mods must never be served
-        assert client.get("/api/mods/server-only/luckperms.jar").status_code == 404
+def _assert_ws_rejected(client: TestClient, path: str = "/ws", headers: dict[str, str] | None = None) -> None:
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect(path, headers=headers or {}):
+            pass
+    assert exc_info.value.code == status.WS_1008_POLICY_VIOLATION
 
 
-def test_websocket_hello_and_reload_broadcast(modpack_dir: Path) -> None:
-    app = create_app(modpack_dir=modpack_dir, admin_token="secret-admin", watch_interval=0)
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws") as ws:
-            hello = ws.receive_json()
-            assert hello["type"] == "hello"
-            assert hello["mod_count"] == 2
-            initial_version = hello["version"]
+def test_manifest_etag_and_mod_download(client: TestClient) -> None:
+    health = client.get("/health")
+    assert health.status_code == status.HTTP_200_OK
+    assert health.json()["mod_count"] == 2
 
-            # Unauthorized reload rejected
-            unauth = client.post("/api/reload")
-            assert unauth.status_code == 401
+    resp = client.get("/api/manifest", headers=CLIENT_HEADERS)
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.headers["cache-control"] == "no-cache"
+    data = resp.json()
+    assert data["mod_count"] == 2
+    assert [m["filename"] for m in data["mods"]] == ["create.jar", "oculus.jar"]
+    etag = resp.headers["etag"]
 
-            # Add new jar and trigger reload -> WS receives instant mods_updated event
-            (modpack_dir / "client-only" / "jade.jar").write_bytes(b"jade-payload")
-            reloaded = client.post("/api/reload", headers={"X-Admin-Token": "secret-admin"})
-            assert reloaded.status_code == 200
-            body = reloaded.json()
-            assert body["changed"] is True
-            assert body["notified_clients"] == 1
-            assert body["version"] != initial_version
+    not_modified = client.get("/api/manifest", headers={**CLIENT_HEADERS, "If-None-Match": etag})
+    assert not_modified.status_code == status.HTTP_304_NOT_MODIFIED
 
-            event = ws.receive_json()
-            assert event["type"] == "mods_updated"
-            assert event["version"] == body["version"]
-            assert event["mod_count"] == 3
+    jar_resp = client.get("/api/mods/server-client/create.jar", headers=CLIENT_HEADERS)
+    assert jar_resp.status_code == status.HTTP_200_OK
+    assert jar_resp.content == b"create-jar-payload"
+    assert jar_resp.headers["etag"] == f'"{hashlib.sha256(b"create-jar-payload").hexdigest()}"'
+
+    # server-only mods must never be served
+    assert client.get("/api/mods/server-only/luckperms.jar", headers=CLIENT_HEADERS).status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {"Authorization": "Basic dXNlcjpwYXNz"},
+        {"Authorization": "Bearer wrong-token"},
+        [(b"authorization", b"Bearer \xe9")],
+    ],
+)
+def test_client_http_endpoints_reject_invalid_auth(
+    client: TestClient,
+    headers: dict[str, str] | list[tuple[bytes, bytes]],
+) -> None:
+    for path in ("/api/manifest", "/api/mods/server-client/create.jar"):
+        resp = client.get(path, headers=headers)
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+        assert resp.headers.get("www-authenticate") == "Bearer"
+
+
+def test_websocket_auth_ping_and_reload_broadcast(client: TestClient, modpack_dir: Path) -> None:
+    _assert_ws_rejected(client)
+    _assert_ws_rejected(client, "/ws?token=wrong")
+    _assert_ws_rejected(client, "/ws?token=%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82")
+
+    # Bearer header auth works alongside ?token=
+    with client.websocket_connect("/ws", headers=CLIENT_HEADERS) as ws_header:
+        assert ws_header.receive_json()["type"] == "hello"
+        ws_header.send_text("ping")
+        assert ws_header.receive_json() == {"type": "pong"}
+
+    with client.websocket_connect(f"/ws?token={CLIENT_TOKEN}") as ws:
+        hello = ws.receive_json()
+        assert hello["type"] == "hello"
+        assert hello["mod_count"] == 2
+        initial_version = hello["version"]
+
+        assert client.post("/api/reload").status_code == status.HTTP_401_UNAUTHORIZED
+        assert client.post("/api/reload", headers={"X-Admin-Token": "wrong"}).status_code == status.HTTP_401_UNAUTHORIZED
+        assert client.post("/api/reload", headers=[(b"x-admin-token", b"\xe9")]).status_code == status.HTTP_401_UNAUTHORIZED
+
+        # Unchanged reload reports changed=False and notifies 0 clients
+        unchanged = client.post("/api/reload", headers=ADMIN_HEADERS)
+        assert unchanged.status_code == status.HTTP_200_OK
+        assert unchanged.json()["changed"] is False
+        assert unchanged.json()["notified_clients"] == 0
+
+        # Adding a client-only jar updates /api/manifest without broadcasting WS mods_updated
+        (modpack_dir / "client-only" / "jade.jar").write_bytes(b"jade-payload")
+        client_only_reload = client.post("/api/reload", headers=ADMIN_HEADERS)
+        assert client_only_reload.status_code == status.HTTP_200_OK
+        assert client_only_reload.json()["changed"] is False
+        assert client_only_reload.json()["notified_clients"] == 0
+        assert len(client.get("/api/manifest", headers=CLIENT_HEADERS).json()["mods"]) == 3
+
+        # Adding a server-client jar triggers changed=True and WS mods_updated broadcast
+        (modpack_dir / "server-client" / "waystones.jar").write_bytes(b"waystones-payload")
+        reloaded = client.post("/api/reload", headers=ADMIN_HEADERS)
+        assert reloaded.status_code == status.HTTP_200_OK
+        body = reloaded.json()
+        assert body["changed"] is True
+        assert body["notified_clients"] == 1
+        assert body["version"] != initial_version
+
+        event = ws.receive_json()
+        assert event["type"] == "mods_updated"
+        assert event["version"] == body["version"]
+        assert event["mod_count"] == 4
+
+
+def test_reload_requires_admin_token_even_on_loopback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MODSYNC_ADMIN_TOKEN", raising=False)
+    with TestClient(create_app()) as unconfigured_client:
+        assert unconfigured_client.post("/api/reload").status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+
+
+def test_client_endpoints_fail_closed_without_client_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MODSYNC_CLIENT_TOKEN", raising=False)
+    with TestClient(create_app()) as unconfigured_client:
+        assert unconfigured_client.get("/api/manifest").status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert unconfigured_client.get("/api/mods/server-client/create.jar").status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        _assert_ws_rejected(unconfigured_client)
+
+
+@pytest.mark.parametrize("bad_interval", ["0", "-1", "nan"])
+def test_rejects_invalid_ws_ping_interval(monkeypatch: pytest.MonkeyPatch, bad_interval: str) -> None:
+    monkeypatch.setenv("MODSYNC_WS_PING_INTERVAL", bad_interval)
+    with pytest.raises(ValueError, match="MODSYNC_WS_PING_INTERVAL"):
+        create_app()

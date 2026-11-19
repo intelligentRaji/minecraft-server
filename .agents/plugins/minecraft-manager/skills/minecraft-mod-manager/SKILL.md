@@ -21,33 +21,20 @@ python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/q
 ---
 
 ### Step 2: Download Mod into Target Category
-Download or place the `.jar` file directly into the appropriate folder inside `server/modpack/`:
-* Content mods (blocks, mobs, worldgen) $\rightarrow$ `server/modpack/server-client/`
-* Headless server utilities (backups, optimization) $\rightarrow$ `server/modpack/server-only/`
-* UI / HUD / Rendering $\rightarrow$ `server/modpack/client-only/`
+Download or place the `.jar` file directly into the appropriate folder inside `modpack/`:
+* Content mods (blocks, mobs, worldgen) $\rightarrow$ `modpack/server-client/`
+* Headless server utilities (backups, optimization) $\rightarrow$ `modpack/server-only/`
+* UI / HUD / Rendering $\rightarrow$ `modpack/client-only/`
 
 ```bash
-python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug> --download-to server/modpack/<category>
+python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/query_modrinth.py <slug> --download-to modpack/<category>
 ```
 Repeat for any required dependencies reported in Step 1.
 
 ---
 
-### Step 3: Synchronize Modpack
-Synchronize the new `.jar` files with the Docker server (`server/data/mods/`) and notify `modsync-api` so connected clients receive the update over WebSocket *(requires `BypassSandbox: true` for the Docker socket on `--restart`)*:
-
-```bash
-# Preview changes:
-python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --dry-run
-
-# Synchronize, restart server if server mods changed, and notify modsync-api:
-python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
-```
-
----
-
-### Step 4: Verify Server Health
-Check the container startup logs to ensure all mods loaded cleanly:
+### Step 3: Apply Changes & Verify Server Health
+* **For `server-client` or `server-only` mod changes:** Ask the user to run `make restart` (`make sync-dry` previews changes). Once restarted, verify logs report ready:
 
 ```bash
 docker compose logs --tail=50 mc
@@ -56,12 +43,13 @@ Confirm the server reports:
 ```text
 [Server thread/INFO] [minecraft/DedicatedServer]: Done (...s)! For help, type "help"
 ```
-If the newly installed mods generated new configuration files in `server/data/config/` or `server/data/world/serverconfig/`, activate **`minecraft-mod-harness-manager`** in Step 5 to create their `server/mods/<slug>/` vertical slices.
+If the newly installed mods generated new configuration files in `server/data/config/` or `server/data/world/serverconfig/`, activate **`minecraft-mod-harness-manager`** in Step 4 to create their `server/mods/<slug>/` vertical slices.
+* **For `client-only` mod changes (no `mc` restart needed):** Run `make reload` so `modsync-api` refreshes `/api/manifest` (no WebSocket push is sent; players receive them when clicking **Install Recommended Client Mods**).
 
 ---
 
-### Step 5: Create or Remove Mod Config Harness
-After adding or removing a server mod (`server-client` or `server-only`) in `server/modpack/`:
+### Step 4: Create or Remove Mod Config Harness
+After adding or removing a server mod (`server-client` or `server-only`) in `modpack/`:
 
 1. **After Installing a Server Mod:**
    Activate **`minecraft-mod-harness-manager`** to onboard `server/mods/<slug>/`.
@@ -70,7 +58,7 @@ After adding or removing a server mod (`server-client` or `server-only`) in `ser
 
 ---
 
-### Step 6: Synchronize with Google Drive (Final Step)
+### Step 5: Synchronize with Google Drive (Final Step)
 After any mod additions, upgrades, or deletions are verified locally:
 1. **Adding / Updating Mods:** Ask the user:
    > *"Would you like me to upload the updated mods to your Google Drive (`minecraft-server/mods/`) for safe backup and sharing?"*
@@ -81,9 +69,6 @@ Upon user approval, activate the **`minecraft-gdrive-sync`** skill to perform th
 
 ---
 
-### Step 7: Troubleshooting Startup Errors
+### Step 6: Troubleshooting Startup Errors
 1. **Missing Dependency Range:** Check logs for `Missing or unsupported mandatory dependencies: Mod ID: '<id>'`. Query and download the missing library using Steps 1–3.
-2. **Headless Crash:** If a `NoClassDefFoundError` or rendering error appears, ensure no client-side UI mods were placed into `server-client/` or `server-only/`. Move them to `client-only/` and re-run:
-   ```bash
-   python3 .agents/plugins/minecraft-manager/skills/minecraft-mod-manager/scripts/sync_mods.py --restart
-   ```
+2. **Headless Crash:** If a `NoClassDefFoundError` or rendering error appears, ensure no client-side UI mods were placed into `server-client/` or `server-only/`. Move them to `client-only/`, then ask the user to run `make restart` to prune them from `server/data/mods/`.

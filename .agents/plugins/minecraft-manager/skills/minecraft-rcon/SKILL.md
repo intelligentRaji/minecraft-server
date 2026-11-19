@@ -14,7 +14,7 @@ Shared procedure and helper script for running live server commands on the Docke
 
 ## Quick Usage
 
-Ensure `mc-forge-server` is running (`docker compose ps`), then use [rcon.py](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/skills/minecraft-rcon/scripts/rcon.py):
+Ensure `mc-forge-server` is running (`make status`), then use [rcon.py](file:///home/wakaria/dev/minecraft-server/.agents/plugins/minecraft-manager/skills/minecraft-rcon/scripts/rcon.py):
 
 ```bash
 # Preview without executing:
@@ -47,6 +47,6 @@ python3 .agents/plugins/minecraft-manager/skills/minecraft-rcon/scripts/rcon.py 
 
 - **LuckPerms stdout on Forge 1.20.1:** `lp` commands execute asynchronously and return empty stdout over `rcon-cli`. To verify LuckPerms state, run `lp export <name>` and inspect `server/data/config/luckperms/<name>.json.gz` (and remove the temporary export afterward).
 - **Offline-mode player UUIDs:** Because the server runs in offline mode, LuckPerms cannot look up Mojang UUIDs for players who have not joined since LuckPerms was installed. Resolve the player's UUID from [usercache.json](file:///home/wakaria/dev/minecraft-server/server/data/usercache.json) when targeting offline players.
-- **Connection refused on port `25575`:** If `mc-forge-server` just restarted, wait for `docker compose ps` to report `healthy` before retrying RCON.
-- **Docker socket in sandboxed runs:** If `docker compose ps` or `rcon.py` fails with `dial unix /var/run/docker.sock: connect: no such file or directory`, `/var/run/docker.sock` is likely blocked by sandbox isolation rather than Docker being stopped. Try sandboxed first, then re-run outside the sandbox with user approval if blocked.
+- **Connection refused on port `25575`:** If `mc-forge-server` just restarted, wait for `make status` to report `healthy` before retrying RCON.
+- **Docker socket in sandboxed runs:** If `make status` or `rcon.py` fails with `dial unix /var/run/docker.sock: connect: no such file or directory`, `/var/run/docker.sock` is likely blocked by sandbox isolation rather than Docker being stopped. Try sandboxed first, then re-run outside the sandbox with user approval if blocked.
 - **Safety guardrails:** Confirm with the user before running disruptive commands (`stop`, `kick`, `ban`, `pardon`, `whitelist off`, `difficulty`, or `gamerule` changes).

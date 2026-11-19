@@ -5,6 +5,9 @@ services:
     image: itzg/minecraft-server:latest
     container_name: mc-forge-server
     restart: unless-stopped
+    depends_on:
+      modsync-api:
+        condition: service_healthy
     ports:
       - "25565:25565"
     environment:
@@ -21,11 +24,16 @@ services:
       MOTD: "A Modded Minecraft Server (Forge 1.20.1)"
       OPS: "Wakaria"
       ONLINE_MODE: "false"
+      MODSYNC_API_URL: "http://modsync-api:8080"
+      MODSYNC_ADMIN_TOKEN: "${MODSYNC_ADMIN_TOKEN:-}"
+      MODPACK_DIR: "/modpack"
     volumes:
       - ./server/data:/data
+      - ./modpack:/modpack:ro
       - ./server/mods:/mods:ro
+      - ./server/sync_mods.py:/sync_mods.py:ro
       - ./server/sync_mod_configurations.py:/sync_mod_configurations.py:ro
-    entrypoint: ["/bin/bash", "-c", "python3 /sync_mod_configurations.py && exec /start"]
+    entrypoint: ["/bin/bash", "-c", "python3 /sync_mods.py && python3 /sync_mod_configurations.py && exec /start"]
     tty: true
     stdin_open: true
 
@@ -41,14 +49,14 @@ services:
       MODPACK_DIR: "/modpack"
       MODSYNC_ADMIN_TOKEN: "${MODSYNC_ADMIN_TOKEN:-}"
       MODSYNC_CLIENT_TOKEN: "${MODSYNC_CLIENT_TOKEN:-}"
-      MODSYNC_WATCH_INTERVAL: "3.0"
     volumes:
-      - ./server/modpack:/modpack:ro
+      - ./modpack:/modpack:ro
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health').read()"]
-      interval: 30s
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).read()"]
+      interval: 5s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 5s
 
   wireguard:
     image: lscr.io/linuxserver/wireguard:latest

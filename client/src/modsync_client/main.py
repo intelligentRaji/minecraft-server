@@ -114,7 +114,12 @@ def _setup_gui_or_cli(existing: AppConfig | None) -> AppConfig:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="ModSync background Minecraft mod synchronizer.")
     parser.add_argument("--headless", action="store_true", help="Run without system tray icon")
-    parser.add_argument("--sync-once", action="store_true", help="Perform a single sync and exit")
+    parser.add_argument("--sync-once", action="store_true", help="Perform a single mandatory mod sync and exit")
+    parser.add_argument(
+        "--install-recommended",
+        action="store_true",
+        help="Install optional client-only mods and exit",
+    )
     parser.add_argument("--setup", action="store_true", help="Reconfigure server URL and mods folder")
     parser.add_argument("--server-url", help="Override ModSync server URL")
     parser.add_argument("--mods-dir", type=Path, help="Override Minecraft mods directory")
@@ -130,14 +135,19 @@ def main(argv: list[str] | None = None) -> int:
 
     config = resolve_or_setup_config(args)
 
-    if args.sync_once:
+    if args.sync_once or args.install_recommended:
         syncer = ModSyncer(
             server_url=config.normalized_server_url,
             mods_dir=config.mods_path,
             staging_dir=default_staging_dir(),
+            client_token=config.client_token,
         )
         try:
-            result = syncer.sync_once()
+            result = (
+                syncer.install_recommended()
+                if args.install_recommended
+                else syncer.sync_once()
+            )
             print(result.message)
             return 0 if result.status != SyncStatus.ERROR else 1
         finally:
