@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+# pyright: reportUndefinedVariable=false
 import sys
 from pathlib import Path
 

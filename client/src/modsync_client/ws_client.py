@@ -7,16 +7,31 @@ import json
 import logging
 import random
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import websockets
 
-from .config import AppConfig, build_ws_url, default_staging_dir
+from .config import Config, build_ws_url, default_staging_dir
 from .syncer import ModSyncer, SyncResult, SyncStatus
 
 logger = logging.getLogger("modsync_client.ws")
 
 StatusCallback = Callable[[SyncStatus, str, SyncResult | None], None]
+
+WS_EVENT_HELLO = "hello"
+WS_EVENT_MODS_UPDATED = "mods_updated"
+WS_EVENT_PING = "ping"
+WS_EVENT_PONG = "pong"
+
+WS_OPEN_TIMEOUT_SECONDS = 15
+WS_PING_INTERVAL_SECONDS = 30
+WS_PING_TIMEOUT_SECONDS = 20
+WS_CLOSE_TIMEOUT_SECONDS = 5
+
+INITIAL_BACKOFF_SECONDS = 2.0
+MAX_BACKOFF_SECONDS = 60.0
+POLL_TICK_SECONDS = 5.0
+MIN_POLL_FALLBACK_SECONDS = 30
 
 
 class ModSyncService:
@@ -24,7 +39,7 @@ class ModSyncService:
 
     def __init__(
         self,
-        config: AppConfig,
+        config: Config,
         *,
         on_status: StatusCallback | None = None,
         staging_dir: Path | None = None,
@@ -32,12 +47,7 @@ class ModSyncService:
         self.config = config
         self.on_status = on_status
         self.staging_dir = staging_dir or default_staging_dir()
-        self.syncer = ModSyncer(
-            server_url=config.normalized_server_url,
-            mods_dir=config.mods_path,
-            staging_dir=self.staging_dir,
-            client_token=config.client_token,
-        )
+        self.syncer = self._create_syncer(config)
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stop_event: asyncio.Event | None = None
@@ -45,6 +55,14 @@ class ModSyncService:
         self._recommended_event: asyncio.Event | None = None
         self._sync_lock: asyncio.Lock | None = None
         self._last_result: SyncResult | None = None
+
+    def _create_syncer(self, config: Config) -> ModSyncer:
+        return ModSyncer(
+            server_url=config.normalized_server_url,
+            mods_dir=config.mods_path,
+            staging_dir=self.staging_dir,
+            client_token=config.client_token,
+        )
 
     def _emit(self, status: SyncStatus, message: str, result: SyncResult | None = None) -> None:
         if result is not None:
@@ -70,16 +88,11 @@ class ModSyncService:
         if self._loop is not None and self._stop_event is not None:
             self._loop.call_soon_threadsafe(self._stop_event.set)
 
-    def reconfigure(self, new_config: AppConfig) -> None:
+    def reconfigure(self, new_config: Config) -> None:
         """Update config and trigger a reconnect/sync cycle."""
         self.config = new_config
         self.syncer.close()
-        self.syncer = ModSyncer(
-            server_url=new_config.normalized_server_url,
-            mods_dir=new_config.mods_path,
-            staging_dir=self.staging_dir,
-            client_token=new_config.client_token,
-        )
+        self.syncer = self._create_syncer(new_config)
         self._last_result = None
         self.request_sync()
 
@@ -102,53 +115,76 @@ class ModSyncService:
     async def _perform_recommended_install(self) -> None:
         await self._run_sync_action("recommended", self.syncer.install_recommended)
 
+    async def _receive_next_event(self, ws: Any) -> dict[str, Any] | None:
+        assert self._stop_event is not None
+        recv_task = asyncio.create_task(ws.recv())
+        stop_task = asyncio.create_task(self._stop_event.wait())
+        _, pending = await asyncio.wait(
+            {recv_task, stop_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+
+        if self._stop_event.is_set():
+            return None
+
+        raw = recv_task.result()
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    async def _handle_ws_event(self, ws: Any, event: dict[str, Any]) -> None:
+        event_type = event.get("type")
+        if event_type == WS_EVENT_HELLO:
+            remote_ver = event.get("version")
+            if self._last_result is None or self._last_result.version != remote_ver:
+                await self._perform_sync("ws:hello")
+        elif event_type == WS_EVENT_MODS_UPDATED:
+            logger.info("Received instant update push: version=%s", event.get("version"))
+            await self._perform_sync("ws:push")
+        elif event_type == WS_EVENT_PING:
+            await ws.send(WS_EVENT_PONG)
+
+    async def _consume_ws_session(self, ws: Any) -> None:
+        assert self._stop_event is not None
+        while not self._stop_event.is_set():
+            event = await self._receive_next_event(ws)
+            if event is None:
+                break
+            if event:
+                await self._handle_ws_event(ws, event)
+
+    async def _wait_reconnect_backoff(self, backoff: float) -> float:
+        assert self._stop_event is not None
+        jitter = random.uniform(0.0, 1.0)
+        try:
+            await asyncio.wait_for(self._stop_event.wait(), timeout=backoff + jitter)
+        except TimeoutError:
+            pass
+        return min(backoff * 2.0, MAX_BACKOFF_SECONDS)
+
     async def _ws_loop(self) -> None:
         assert self._stop_event is not None
-        backoff = 2.0
+        backoff = INITIAL_BACKOFF_SECONDS
         while not self._stop_event.is_set():
             ws_url = build_ws_url(self.config.normalized_server_url, self.config.client_token)
             try:
                 logger.info("Connecting WebSocket to %s", ws_url.split("?")[0])
                 async with websockets.connect(
                     ws_url,
-                    open_timeout=15,
-                    ping_interval=30,
-                    ping_timeout=20,
-                    close_timeout=5,
+                    open_timeout=WS_OPEN_TIMEOUT_SECONDS,
+                    ping_interval=WS_PING_INTERVAL_SECONDS,
+                    ping_timeout=WS_PING_TIMEOUT_SECONDS,
+                    close_timeout=WS_CLOSE_TIMEOUT_SECONDS,
                 ) as ws:
-                    backoff = 2.0
+                    backoff = INITIAL_BACKOFF_SECONDS
                     logger.info("WebSocket connected")
-                    while not self._stop_event.is_set():
-                        recv_task = asyncio.create_task(ws.recv())
-                        stop_task = asyncio.create_task(self._stop_event.wait())
-                        done, pending = await asyncio.wait(
-                            {recv_task, stop_task},
-                            return_when=asyncio.FIRST_COMPLETED,
-                        )
-                        for task in pending:
-                            task.cancel()
-
-                        if self._stop_event.is_set():
-                            break
-
-                        raw = recv_task.result()
-                        if isinstance(raw, bytes):
-                            raw = raw.decode("utf-8", errors="replace")
-                        try:
-                            event = json.loads(raw)
-                        except json.JSONDecodeError:
-                            continue
-
-                        event_type = event.get("type")
-                        if event_type == "hello":
-                            remote_ver = event.get("version")
-                            if self._last_result is None or self._last_result.version != remote_ver:
-                                await self._perform_sync("ws:hello")
-                        elif event_type == "mods_updated":
-                            logger.info("Received instant update push: version=%s", event.get("version"))
-                            await self._perform_sync("ws:push")
-                        elif event_type == "ping":
-                            await ws.send("pong")
+                    await self._consume_ws_session(ws)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -157,19 +193,42 @@ class ModSyncService:
                 logger.warning("WebSocket disconnected (%s); reconnecting in %.1fs", exc, backoff)
                 if self._last_result is None:
                     self._emit(SyncStatus.ERROR, f"Disconnected ({exc})", None)
-                jitter = random.uniform(0.0, 1.0)
-                try:
-                    await asyncio.wait_for(self._stop_event.wait(), timeout=backoff + jitter)
-                except asyncio.TimeoutError:
-                    pass
-                backoff = min(backoff * 2.0, 60.0)
+                backoff = await self._wait_reconnect_backoff(backoff)
+
+    async def _try_apply_pending_staged(self) -> None:
+        if self._last_result is None or self._last_result.status != SyncStatus.STAGED_WAITING_MC:
+            return
+        try:
+            applied = await asyncio.to_thread(self.syncer.try_apply_staged)
+            if applied is not None:
+                self._emit(applied.status, applied.message, applied)
+                logger.info("Applied staged update: %s", applied.message)
+        except Exception as exc:
+            self._emit(SyncStatus.ERROR, f"Apply error: {exc}", self._last_result)
+
+    async def _wait_for_next_tick(self, timeout: float) -> bool:
+        assert self._stop_event is not None
+        assert self._sync_event is not None
+        assert self._recommended_event is not None
+        waiters = {
+            asyncio.create_task(self._sync_event.wait()),
+            asyncio.create_task(self._recommended_event.wait()),
+            asyncio.create_task(self._stop_event.wait()),
+        }
+        done, pending = await asyncio.wait(
+            waiters,
+            timeout=timeout,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+        return not done
 
     async def _poll_and_stage_loop(self) -> None:
         assert self._stop_event is not None
         assert self._sync_event is not None
         assert self._recommended_event is not None
         elapsed = 0.0
-        tick = 5.0
         while not self._stop_event.is_set():
             if self._sync_event.is_set():
                 self._sync_event.clear()
@@ -182,34 +241,15 @@ class ModSyncService:
                 await self._perform_recommended_install()
                 continue
 
-            if (
-                self._last_result is not None
-                and self._last_result.status == SyncStatus.STAGED_WAITING_MC
-            ):
-                try:
-                    applied = await asyncio.to_thread(self.syncer.try_apply_staged)
-                    if applied is not None:
-                        self._emit(applied.status, applied.message, applied)
-                        logger.info("Applied staged update: %s", applied.message)
-                except Exception as exc:
-                    self._emit(SyncStatus.ERROR, f"Apply error: {exc}", self._last_result)
+            await self._try_apply_pending_staged()
 
-            if elapsed >= max(30, self.config.poll_fallback_seconds):
+            poll_interval = max(MIN_POLL_FALLBACK_SECONDS, self.config.poll_fallback_seconds)
+            if elapsed >= poll_interval:
                 elapsed = 0.0
                 await self._perform_sync("poll")
 
-            sync_wait = asyncio.create_task(self._sync_event.wait())
-            rec_wait = asyncio.create_task(self._recommended_event.wait())
-            stop_wait = asyncio.create_task(self._stop_event.wait())
-            done, pending = await asyncio.wait(
-                {sync_wait, rec_wait, stop_wait},
-                timeout=tick,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            for task in pending:
-                task.cancel()
-            if not done:
-                elapsed += tick
+            if await self._wait_for_next_tick(POLL_TICK_SECONDS):
+                elapsed += POLL_TICK_SECONDS
 
     async def run(self) -> None:
         """Run WebSocket listener and fallback/staging loops until stopped."""
