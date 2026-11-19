@@ -12,8 +12,8 @@ This knowledge base provides step-by-step guides for progression, dimensions, co
 
 ## 🗺️ Quick Navigation
 
-### 1. [[installation|Getting Started]]
-* [[installation|Client Installation & Connection]]: How to install the Modrinth App profile and connect.
+### 1. [[user-guide|Getting Started]]
+* [[user-guide|ModSync Client User Guide]]: How to install ModSync, synchronize your launcher's `mods/` folder, and connect.
 
 ### 2. [[passive-skill-tree|Character Progression]]
 * [[passive-skill-tree|Passive Skill Tree]]: How to earn skill points, choose between all 6 classes (Miner, Blacksmith, Enchanter, Cook, Hunter, Alchemist), and path across the 588-node wheel.
