@@ -59,6 +59,13 @@ class Manifest:
             "mods": [mod.to_dict() for mod in self.mods],
         }
 
+    def to_event(self, event_type: str) -> dict[str, object]:
+        return {
+            "type": event_type,
+            "version": self.version,
+            "mod_count": len(self.mods),
+        }
+
 
 def _hash_mod_entries(mods: tuple[ModEntry, ...]) -> str:
     payload = json.dumps(
