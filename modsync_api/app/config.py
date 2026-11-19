@@ -20,7 +20,7 @@ def _parse_positive_float(env_name: str, default: str) -> float:
 
 
 @dataclass(frozen=True)
-class Settings:
+class Config:
     """Validated runtime configuration loaded from environment variables."""
 
     modpack_dir: Path
@@ -29,7 +29,7 @@ class Settings:
     ws_ping_interval: float
 
     @classmethod
-    def from_env(cls) -> Settings:
+    def from_env(cls) -> Config:
         return cls(
             modpack_dir=Path(os.environ.get("MODPACK_DIR", DEFAULT_MODPACK_DIR)),
             admin_token=os.environ.get("MODSYNC_ADMIN_TOKEN", "").strip(),

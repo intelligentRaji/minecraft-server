@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from starlette.requests import HTTPConnection
 
-from .config import Settings
+from .config import Config
 from .connection_manager import ConnectionManager
 from .manifest import ManifestStore
 
 
-def get_settings(conn: HTTPConnection) -> Settings:
-    return conn.app.state.settings
+def get_config(conn: HTTPConnection) -> Config:
+    return conn.app.state.config
 
 
 def get_store(conn: HTTPConnection) -> ManifestStore:

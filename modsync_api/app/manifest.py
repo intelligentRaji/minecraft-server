@@ -67,11 +67,9 @@ class Manifest:
         }
 
 
-def _hash_mod_entries(mods: tuple[ModEntry, ...]) -> str:
-    payload = json.dumps(
-        [(m.category, m.filename, m.sha256, m.size) for m in mods],
-        separators=(",", ":"),
-    ).encode("utf-8")
+def _hash_category_mods(mods: tuple[ModEntry, ...], category: ClientCategory) -> str:
+    category_mods = [(m.category, m.filename, m.sha256, m.size) for m in mods if m.category == category]
+    payload = json.dumps(category_mods, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()[:VERSION_HASH_LENGTH]
 
 
@@ -135,60 +133,50 @@ class ManifestStore:
                 self._current, _ = self.refresh()
             return self._current
 
+    def _build_entry(self, category: ClientCategory, entry: Path) -> ModEntry:
+        stat_res = entry.stat()
+        cache_key = (category, entry.name)
+        cached = self._stat_cache.get(cache_key)
+        if cached is not None and cached[0] == stat_res.st_size and cached[1] == stat_res.st_mtime_ns:
+            sha256 = cached[2]
+        else:
+            sha256 = compute_sha256(entry)
+            self._stat_cache[cache_key] = (stat_res.st_size, stat_res.st_mtime_ns, sha256)
+
+        return ModEntry(
+            filename=entry.name,
+            category=category,
+            sha256=sha256,
+            size=stat_res.st_size,
+            url=f"{MOD_DOWNLOAD_PREFIX}/{category}/{entry.name}",
+        )
+
+    def _scan_category(self, category: ClientCategory) -> list[ModEntry]:
+        cat_dir = _resolve_category_dir(self.modpack_dir, category)
+        if cat_dir is None:
+            return []
+        return [
+            self._build_entry(category, entry)
+            for entry in sorted(cat_dir.iterdir(), key=lambda p: p.name)
+            if _is_safe_jar_file(entry)
+        ]
+
+    def _prune_cache(self, seen_keys: set[tuple[str, str]]) -> None:
+        self._stat_cache = {key: value for key, value in self._stat_cache.items() if key in seen_keys}
+
     def refresh(self) -> tuple[Manifest, bool]:
         """Re-scan modpack directories, hashing only added or modified .jar files."""
         with self._lock:
-            entries_by_key: dict[tuple[ClientCategory, str], ModEntry] = {}
-            seen_keys: set[tuple[str, str]] = set()
+            scanned = [entry for category in CLIENT_CATEGORIES for entry in self._scan_category(category)]
+            self._prune_cache({(mod.category, mod.filename) for mod in scanned})
 
-            for category in CLIENT_CATEGORIES:
-                cat_dir = _resolve_category_dir(self.modpack_dir, category)
-                if cat_dir is None:
-                    continue
+            sorted_mods = tuple(sorted(scanned, key=lambda mod: (mod.filename, mod.category)))
+            version_hash = _hash_category_mods(sorted_mods, "server-client")
+            recommended_hash = _hash_category_mods(sorted_mods, "client-only")
 
-                for entry in sorted(cat_dir.iterdir(), key=lambda p: p.name):
-                    if not _is_safe_jar_file(entry):
-                        continue
-
-                    stat_res = entry.stat()
-                    cache_key = (category, entry.name)
-                    seen_keys.add(cache_key)
-                    cached = self._stat_cache.get(cache_key)
-                    if cached is not None and cached[0] == stat_res.st_size and cached[1] == stat_res.st_mtime_ns:
-                        sha256 = cached[2]
-                    else:
-                        sha256 = compute_sha256(entry)
-                        self._stat_cache[cache_key] = (stat_res.st_size, stat_res.st_mtime_ns, sha256)
-
-                    entries_by_key[(category, entry.name)] = ModEntry(
-                        filename=entry.name,
-                        category=category,
-                        sha256=sha256,
-                        size=stat_res.st_size,
-                        url=f"{MOD_DOWNLOAD_PREFIX}/{category}/{entry.name}",
-                    )
-
-            for stale_key in list(self._stat_cache.keys()):
-                if stale_key not in seen_keys:
-                    del self._stat_cache[stale_key]
-
-            sorted_mods = tuple(
-                entries_by_key[key]
-                for key in sorted(entries_by_key, key=lambda item: (item[1], item[0]))
-            )
-            server_mods = tuple(m for m in sorted_mods if m.category == "server-client")
-            recommended_mods = tuple(m for m in sorted_mods if m.category == "client-only")
-            version_hash = _hash_mod_entries(server_mods)
-            recommended_hash = _hash_mod_entries(recommended_mods)
-
-            prev_version = self._current.version if self._current is not None else None
-            prev_recommended = self._current.recommended_version if self._current is not None else None
-            if (
-                self._current is not None
-                and prev_version == version_hash
-                and prev_recommended == recommended_hash
-            ):
-                return self._current, False
+            prev = self._current
+            if prev is not None and prev.version == version_hash and prev.recommended_version == recommended_hash:
+                return prev, False
 
             manifest = Manifest(
                 version=version_hash,
@@ -197,4 +185,4 @@ class ManifestStore:
                 mods=sorted_mods,
             )
             self._current = manifest
-            return manifest, (prev_version is not None and prev_version != version_hash)
+            return manifest, (prev is not None and prev.version != version_hash)

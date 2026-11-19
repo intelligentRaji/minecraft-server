@@ -6,8 +6,8 @@ import hmac
 
 from fastapi import Depends, Header, HTTPException, status
 
-from .config import Settings
-from .deps import get_settings
+from .config import Config
+from .deps import get_config
 
 BEARER_PREFIX = "bearer "
 
@@ -47,12 +47,12 @@ def verify_http_token(
 
 
 def require_client_auth(
-    settings: Settings = Depends(get_settings),
+    config: Config = Depends(get_config),
     authorization: str | None = Header(default=None),
 ) -> None:
     verify_http_token(
         extract_bearer_token(authorization),
-        settings.client_token,
+        config.client_token,
         missing_detail="MODSYNC_CLIENT_TOKEN must be configured",
         invalid_detail="Invalid or missing client token",
         www_authenticate="Bearer",
@@ -60,12 +60,12 @@ def require_client_auth(
 
 
 def require_admin_auth(
-    settings: Settings = Depends(get_settings),
+    config: Config = Depends(get_config),
     x_admin_token: str | None = Header(default=None),
 ) -> None:
     verify_http_token(
         x_admin_token,
-        settings.admin_token,
+        config.admin_token,
         missing_detail="MODSYNC_ADMIN_TOKEN must be configured to use /api/reload",
         invalid_detail="Invalid or missing X-Admin-Token",
     )

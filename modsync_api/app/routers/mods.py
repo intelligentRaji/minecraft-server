@@ -9,9 +9,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import FileResponse, JSONResponse
 
 from ..auth import require_admin_auth, require_client_auth
-from ..config import Settings
+from ..config import Config
 from ..connection_manager import ConnectionManager
-from ..deps import get_manager, get_settings, get_store
+from ..deps import get_config, get_manager, get_store
 from ..manifest import MOD_DOWNLOAD_PREFIX, ManifestStore, validate_jar_request
 
 JAR_CACHE_MAX_AGE_SECONDS = 3600
@@ -50,10 +50,10 @@ async def get_manifest(
 async def download_mod(
     category: str,
     filename: str,
-    settings: Settings = Depends(get_settings),
+    config: Config = Depends(get_config),
     store: ManifestStore = Depends(get_store),
 ) -> FileResponse:
-    jar_path = validate_jar_request(settings.modpack_dir, category, filename)
+    jar_path = validate_jar_request(config.modpack_dir, category, filename)
     if jar_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mod file not found")
 
