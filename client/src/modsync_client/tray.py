@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 import threading
+import webbrowser
 from pathlib import Path
 from typing import Any
 
 import pystray
 
+from . import __version__
 from .config import Config, save_config
 from .desktop import (
     DEFAULT_STATUS_COLOR,
@@ -21,7 +24,15 @@ from .desktop import (
 )
 from .onboarding import prompt_config_gui
 from .syncer import SyncResult, SyncStatus
+from .updater import (
+    UpdateInfo,
+    check_for_update,
+    download_and_apply_update,
+    relaunch_executable,
+)
 from .ws_client import ModSyncService
+
+logger = logging.getLogger("modsync_client.tray")
 
 MAX_TRAY_TITLE_LENGTH = 120
 BG_THREAD_JOIN_TIMEOUT_SECONDS = 5
@@ -61,6 +72,7 @@ class ModSyncTrayApp:
             pystray.MenuItem("Install Recommended Client Mods", self._on_install_recommended),
             pystray.MenuItem("Open Mods Folder", self._on_open_folder),
             pystray.MenuItem("Configure...", self._on_configure),
+            pystray.MenuItem("Check for Updates...", self._on_check_updates),
         ]
         if sys.platform == "win32":
             items.append(
@@ -118,6 +130,106 @@ class ModSyncTrayApp:
         set_windows_autostart(not is_windows_autostart_enabled())
         self.icon.update_menu()
 
+    @staticmethod
+    def _prompt_update_dialog(update: UpdateInfo) -> bool:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        try:
+            action = (
+                "Download and install now?"
+                if getattr(sys, "frozen", False)
+                else "Open the release page?"
+            )
+            return messagebox.askyesno(
+                "ModSync Update Available",
+                f"ModSync v{update.version} is available (you have v{__version__}).\n\n{action}",
+                parent=root,
+            )
+        finally:
+            root.destroy()
+
+    @staticmethod
+    def _show_info_dialog(title: str, message: str, *, error: bool = False) -> None:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        try:
+            if error:
+                messagebox.showerror(title, message, parent=root)
+            else:
+                messagebox.showinfo(title, message, parent=root)
+        finally:
+            root.destroy()
+
+    def _run_update_check(self, *, interactive: bool) -> None:
+        try:
+            update = check_for_update(__version__)
+        except Exception as exc:
+            logger.warning("Update check failed: %s", exc)
+            if interactive:
+                self._show_info_dialog(
+                    "ModSync Update Check",
+                    f"Could not check for updates:\n{exc}",
+                    error=True,
+                )
+            return
+
+        if update is None:
+            if interactive:
+                self._show_info_dialog(
+                    "ModSync Update Check",
+                    f"You are running the latest version (v{__version__}).",
+                )
+            return
+
+        if not interactive:
+            try:
+                self.icon.notify(
+                    f"ModSync v{update.version} is available. Click 'Check for Updates...' to install.",
+                    "ModSync Update",
+                )
+            except Exception:
+                pass
+            return
+
+        if not self._prompt_update_dialog(update):
+            return
+
+        if not getattr(sys, "frozen", False):
+            if update.html_url:
+                webbrowser.open(update.html_url)
+            return
+
+        try:
+            download_and_apply_update(update)
+        except Exception as exc:
+            logger.error("Failed to apply update: %s", exc)
+            self._show_info_dialog(
+                "ModSync Update Failed",
+                f"Could not install update v{update.version}:\n{exc}",
+                error=True,
+            )
+            return
+
+        relaunch_executable()
+        self.service.stop()
+        self.icon.stop()
+
+    def _on_check_updates(self, _icon: Any, _item: Any) -> None:
+        threading.Thread(
+            target=self._run_update_check,
+            kwargs={"interactive": True},
+            daemon=True,
+            name="modsync-update-check",
+        ).start()
+
     def _on_quit(self, _icon: Any, _item: Any) -> None:
         self.service.stop()
         self.icon.stop()
@@ -129,6 +241,12 @@ class ModSyncTrayApp:
             name="modsync-bg",
         )
         worker.start()
+        threading.Thread(
+            target=self._run_update_check,
+            kwargs={"interactive": False},
+            daemon=True,
+            name="modsync-startup-update-check",
+        ).start()
         try:
             self.icon.run()
         finally:

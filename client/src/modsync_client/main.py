@@ -7,10 +7,12 @@ import asyncio
 import logging
 from pathlib import Path
 
-from .config import Config, default_config_path, default_staging_dir
-from .onboarding import resolve_or_setup_config
-from .syncer import ModSyncer, SyncStatus
-from .ws_client import ModSyncService
+from modsync_client import __version__
+from modsync_client.config import Config, default_config_path, default_staging_dir
+from modsync_client.onboarding import resolve_or_setup_config
+from modsync_client.syncer import ModSyncer, SyncStatus
+from modsync_client.updater import cleanup_old_binary
+from modsync_client.ws_client import ModSyncService
 
 logger = logging.getLogger("modsync_client")
 
@@ -20,6 +22,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="ModSync background Minecraft mod synchronizer."
     )
+    parser.add_argument(
+        "invite_uri",
+        nargs="?",
+        default=None,
+        help="Optional modsync://connect?... invite link or server URL",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--headless", action="store_true", help="Run without system tray icon")
     parser.add_argument(
         "--sync-once",
@@ -34,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--setup",
         action="store_true",
-        help="Reconfigure server URL and mods folder",
+        help="Reconfigure server invite link and Minecraft folder",
     )
     parser.add_argument("--server-url", help="Override ModSync server URL")
     parser.add_argument("--mods-dir", type=Path, help="Override Minecraft mods directory")
@@ -77,6 +86,7 @@ def _run_headless(config: Config) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    cleanup_old_binary()
     args = build_parser().parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

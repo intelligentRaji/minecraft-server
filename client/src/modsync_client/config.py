@@ -8,10 +8,24 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-DEFAULT_SERVER_URL = os.environ.get("MODSYNC_DEFAULT_SERVER_URL", "")
+
+def get_default_server_url() -> str:
+    """Return runtime environment ModSync server URL."""
+    raw = os.environ.get("MODSYNC_SERVER_URL") or os.environ.get("MODSYNC_DEFAULT_SERVER_URL") or ""
+    return raw.strip().rstrip("/")
+
+
+def get_default_client_token() -> str:
+    """Return runtime environment ModSync client auth token."""
+    return os.environ.get("MODSYNC_CLIENT_TOKEN", "").strip()
+
+
+DEFAULT_SERVER_URL = get_default_server_url()
 DEFAULT_POLL_FALLBACK_SECONDS = 300
+INVITE_URL_SCHEME = "modsync"
+HTTP_URL_SCHEMES = frozenset({"http", "https"})
 VALID_URL_SCHEMES = frozenset({"http", "https", "ws", "wss"})
 SECURE_URL_SCHEMES = frozenset({"https", "wss"})
 WS_ENDPOINT_PATH = "/ws"
@@ -59,14 +73,14 @@ class Config:
 
     @classmethod
     def from_env(cls) -> Config | None:
-        env_url = os.environ.get("MODSYNC_SERVER_URL", "").strip()
+        env_url = get_default_server_url()
         env_mods = os.environ.get("MODSYNC_MODS_DIR", "").strip()
         if not env_url or not env_mods:
             return None
         return cls(
-            server_url=env_url.rstrip("/"),
+            server_url=env_url,
             mods_dir=env_mods,
-            client_token=os.environ.get("MODSYNC_CLIENT_TOKEN", ""),
+            client_token=get_default_client_token(),
         )
 
 
@@ -166,6 +180,67 @@ def detect_mods_dirs() -> list[Path]:
         else _unix_mods_candidates(home)
     )
     return _deduplicate_paths(candidates)
+
+
+def detect_minecraft_dirs() -> list[Path]:
+    """Discover likely Minecraft profile/instance root folders (parent of mods/)."""
+    return _deduplicate_paths([mods_dir.parent for mods_dir in detect_mods_dirs()])
+
+
+def resolve_mods_dir(selected_dir: Path | str) -> Path:
+    """Resolve the mods/ directory from a selected Minecraft folder or mods/ itself."""
+    path = Path(selected_dir).expanduser()
+    if path.name.lower() == "mods":
+        return path
+    for nested in (Path(".minecraft") / "mods", Path("minecraft") / "mods"):
+        candidate = path / nested
+        if candidate.is_dir():
+            return candidate
+    if (path / ".minecraft").is_dir():
+        return path / ".minecraft" / "mods"
+    return path / "mods"
+
+
+def build_invite_url(server_url: str, client_token: str = "") -> str:
+    """Build a shareable modsync://connect?... invite URI for players."""
+    normalized = server_url.strip().rstrip("/")
+    parsed = urlparse(normalized)
+    if parsed.scheme not in HTTP_URL_SCHEMES or not parsed.netloc:
+        raise ValueError(
+            f"Invalid server URL: {server_url!r} (expected https://... or http://...)"
+        )
+    params: dict[str, str] = {"url": normalized}
+    token = client_token.strip()
+    if token:
+        params["token"] = token
+    return f"{INVITE_URL_SCHEME}://connect?{urlencode(params)}"
+
+
+def parse_server_input(raw: str) -> tuple[str, str | None]:
+    """Parse either a modsync://connect?... invite link or an http(s):// server URL."""
+    text = raw.strip()
+    if not text:
+        raise ValueError("Server URL or invite link is required.")
+    parsed = urlparse(text)
+    if parsed.scheme.lower() == INVITE_URL_SCHEME:
+        params = parse_qs(parsed.query)
+        url_values = params.get("url") or []
+        target_url = url_values[0].strip().rstrip("/") if url_values else ""
+        target_parsed = urlparse(target_url)
+        if target_parsed.scheme not in HTTP_URL_SCHEMES or not target_parsed.netloc:
+            raise ValueError(
+                f"Invalid invite link: missing or invalid 'url' parameter in {raw!r}"
+            )
+        token_values = params.get("token") or []
+        token = token_values[0].strip() if token_values and token_values[0].strip() else None
+        return target_url, token
+
+    if parsed.scheme not in HTTP_URL_SCHEMES or not parsed.netloc:
+        raise ValueError(
+            f"Invalid server URL or invite link: {raw!r} "
+            "(expected modsync://connect?... or https://...)"
+        )
+    return text.rstrip("/"), None
 
 
 def build_ws_url(server_url: str, client_token: str = "") -> str:

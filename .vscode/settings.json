@@ -1,5 +1,6 @@
 {
   "files.associations": {
-    "modsync.spec": "python"
+    "modsync.spec": "python",
+    "*.iss": "ini"
   }
 }
