@@ -4,10 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-try:
-    import psutil
-except ImportError:  # pragma: no cover - fallback when running minimal tests without psutil
-    psutil = None  # type: ignore[assignment]
+import psutil
 
 MC_CMDLINE_MARKERS = (
     "net.minecraft",
@@ -28,8 +25,6 @@ def _is_java_minecraft_process(proc: Any) -> bool:
 
 def default_is_minecraft_running() -> bool:
     """Return True if a Java Minecraft client process appears to be running."""
-    if psutil is None:
-        return False
     for proc in psutil.process_iter(["name", "cmdline"]):
         try:
             if _is_java_minecraft_process(proc):

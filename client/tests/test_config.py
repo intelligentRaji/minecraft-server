@@ -10,8 +10,6 @@ from modsync_client.config import (
     Config,
     build_invite_url,
     build_ws_url,
-    get_default_client_token,
-    get_default_server_url,
     load_config,
     parse_server_input,
     resolve_mods_dir,
@@ -101,17 +99,12 @@ def test_resolve_mods_dir_from_minecraft_folders(tmp_path: Path) -> None:
     assert resolve_mods_dir(dot_mc_only) == dot_mc_only / ".minecraft" / "mods"
 
 
-def test_prompt_config_cli_skips_url_when_env_default_set(
+def test_prompt_config_cli_skips_url_when_preset_url_given(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mc_folder = tmp_path / "MyInstance"
     mc_folder.mkdir()
-
-    monkeypatch.setenv("MODSYNC_SERVER_URL", "https://baked.example.com/")
-    monkeypatch.setenv("MODSYNC_CLIENT_TOKEN", "baked-token")
-    assert get_default_server_url() == "https://baked.example.com"
-    assert get_default_client_token() == "baked-token"
 
     prompts: list[str] = []
 
@@ -120,15 +113,25 @@ def test_prompt_config_cli_skips_url_when_env_default_set(
         return str(mc_folder)
 
     monkeypatch.setattr("builtins.input", fake_input)
-    cfg = prompt_config_cli(None)
+    cfg = prompt_config_cli(
+        None,
+        preset_url="https://mods.example.com/",
+        preset_token="preset-token",
+    )
 
     assert len(prompts) == 1
     assert "Minecraft folder" in prompts[0]
     assert cfg == Config(
-        server_url="https://baked.example.com",
+        server_url="https://mods.example.com",
         mods_dir=str(mc_folder / "mods"),
-        client_token="baked-token",
+        client_token="preset-token",
     )
+
+
+def test_prompt_config_cli_requires_url_on_first_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "")
+    with pytest.raises(SystemExit, match="Server URL or invite link is required"):
+        prompt_config_cli(None)
 
 
 def test_build_and_parse_invite_url() -> None:

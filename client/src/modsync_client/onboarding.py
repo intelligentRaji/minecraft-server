@@ -11,8 +11,6 @@ from .config import (
     DEFAULT_POLL_FALLBACK_SECONDS,
     Config,
     detect_minecraft_dirs,
-    get_default_client_token,
-    get_default_server_url,
     load_config,
     parse_server_input,
     resolve_mods_dir,
@@ -21,28 +19,42 @@ from .config import (
 
 logger = logging.getLogger("modsync_client.onboarding")
 
-FALLBACK_PROMPT_URL = "https://mods.example.com"
+
+def _existing_minecraft_dir(existing: Config) -> str:
+    mods_path = existing.mods_path
+    return str(mods_path.parent if mods_path.name.lower() == "mods" else mods_path)
 
 
-def _initial_minecraft_dir(existing: Config | None, detected: list[Path]) -> str:
-    if existing is not None:
-        mods_path = existing.mods_path
-        return str(mods_path.parent if mods_path.name.lower() == "mods" else mods_path)
-    return str(detected[0]) if detected else ""
+def _prompt_with_default(label: str, default: str = "") -> str:
+    prompt = f"{label} [{default}]: " if default else f"{label}: "
+    return input(prompt).strip() or default
 
 
-def _resolve_token(
+def _build_prompted_config(
+    *,
+    server_url: str,
+    selected_folder: str,
     parsed_token: str | None,
     existing: Config | None,
-    preset_token: str | None = None,
-) -> str:
+    preset_token: str | None,
+) -> Config:
     if parsed_token is not None:
-        return parsed_token
-    if preset_token is not None:
-        return preset_token
-    if existing is not None and existing.client_token:
-        return existing.client_token
-    return get_default_client_token()
+        token = parsed_token
+    elif preset_token is not None:
+        token = preset_token
+    elif existing is not None:
+        token = existing.client_token
+    else:
+        token = ""
+
+    return Config(
+        server_url=server_url,
+        mods_dir=str(resolve_mods_dir(selected_folder)),
+        client_token=token,
+        poll_fallback_seconds=(
+            existing.poll_fallback_seconds if existing else DEFAULT_POLL_FALLBACK_SECONDS
+        ),
+    )
 
 
 def prompt_config_cli(
@@ -52,48 +64,39 @@ def prompt_config_cli(
     preset_token: str | None = None,
 ) -> Config:
     """Prompt the user for Minecraft folder (and invite link/URL when not preconfigured)."""
-    default_env_url = preset_url.strip().rstrip("/") or get_default_server_url()
+    normalized_preset = preset_url.strip().rstrip("/")
     parsed_token: str | None = None
-    if existing is None and default_env_url:
-        server_url = default_env_url
+    if existing is None and normalized_preset:
+        server_url = normalized_preset
         print(f"Using ModSync server URL: {server_url}")
     else:
-        default_url = (
-            existing.server_url
-            if existing
-            else (default_env_url or FALLBACK_PROMPT_URL)
-        )
-        raw_input = (
-            input(f"Server invite link (modsync://...) or URL [{default_url}]: ").strip()
-            or default_url
-        )
+        default_url = existing.server_url if existing else ""
+        raw_input = _prompt_with_default("Server invite link (modsync://...) or URL", default_url)
         try:
             server_url, parsed_token = parse_server_input(raw_input)
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
 
-    detected = detect_minecraft_dirs()
-    default_folder = _initial_minecraft_dir(existing, detected)
-    if detected:
-        print("Detected Minecraft folders:")
-        for idx, path in enumerate(detected, start=1):
-            print(f"  {idx}. {path}")
-    prompt_label = (
-        f"Minecraft folder [{default_folder}]: "
-        if default_folder
-        else "Minecraft folder: "
-    )
-    selected_folder = input(prompt_label).strip() or default_folder
+    if existing is not None:
+        default_folder = _existing_minecraft_dir(existing)
+    else:
+        detected = detect_minecraft_dirs()
+        default_folder = str(detected[0]) if detected else ""
+        if detected:
+            print("Detected Minecraft folders:")
+            for idx, path in enumerate(detected, start=1):
+                print(f"  {idx}. {path}")
+
+    selected_folder = _prompt_with_default("Minecraft folder", default_folder)
     if not selected_folder:
         raise SystemExit("Minecraft folder path is required.")
 
-    return Config(
-        server_url=server_url.rstrip("/"),
-        mods_dir=str(resolve_mods_dir(selected_folder)),
-        client_token=_resolve_token(parsed_token, existing, preset_token),
-        poll_fallback_seconds=(
-            existing.poll_fallback_seconds if existing else DEFAULT_POLL_FALLBACK_SECONDS
-        ),
+    return _build_prompted_config(
+        server_url=server_url,
+        selected_folder=selected_folder,
+        parsed_token=parsed_token,
+        existing=existing,
+        preset_token=preset_token,
     )
 
 
@@ -115,12 +118,12 @@ def prompt_config_gui(
     root.withdraw()
     root.attributes("-topmost", True)
     try:
-        default_env_url = preset_url.strip().rstrip("/") or get_default_server_url()
+        normalized_preset = preset_url.strip().rstrip("/")
         parsed_token: str | None = None
-        if existing is None and default_env_url:
-            server_url = default_env_url
+        if existing is None and normalized_preset:
+            server_url = normalized_preset
         else:
-            default_url = existing.server_url if existing else (default_env_url or "modsync://")
+            default_url = existing.server_url if existing else "modsync://"
             while True:
                 raw_input = simpledialog.askstring(
                     "ModSync Setup",
@@ -137,8 +140,12 @@ def prompt_config_gui(
                     messagebox.showerror("Invalid Invite Link", str(exc), parent=root)
                     default_url = raw_input.strip()
 
-        detected = detect_minecraft_dirs()
-        initial_dir = _initial_minecraft_dir(existing, detected) or str(Path.home())
+        if existing is not None:
+            initial_dir = _existing_minecraft_dir(existing)
+        else:
+            detected = detect_minecraft_dirs()
+            initial_dir = str(detected[0]) if detected else str(Path.home())
+
         messagebox.showinfo(
             "ModSync Setup",
             "Select your Minecraft folder on the next dialog (the 'mods' folder inside it will be synced).",
@@ -152,13 +159,12 @@ def prompt_config_gui(
         if not selected_dir:
             return None
 
-        return Config(
-            server_url=server_url.strip().rstrip("/"),
-            mods_dir=str(resolve_mods_dir(selected_dir)),
-            client_token=_resolve_token(parsed_token, existing, preset_token),
-            poll_fallback_seconds=(
-                existing.poll_fallback_seconds if existing else DEFAULT_POLL_FALLBACK_SECONDS
-            ),
+        return _build_prompted_config(
+            server_url=server_url,
+            selected_folder=selected_dir,
+            parsed_token=parsed_token,
+            existing=existing,
+            preset_token=preset_token,
         )
     finally:
         root.destroy()
@@ -218,19 +224,14 @@ def resolve_or_setup_config(args: argparse.Namespace) -> Config:
         save_config(cfg, cfg_path)
         return cfg
 
-    effective_url = preset_url or (get_default_server_url() if existing is None else "")
-    if effective_url and args.mods_dir:
+    if preset_url and args.mods_dir:
         cfg = Config(
-            server_url=effective_url.rstrip("/"),
+            server_url=preset_url.rstrip("/"),
             mods_dir=str(args.mods_dir),
             client_token=(
                 args.token
                 if args.token is not None
-                else (
-                    (existing.client_token or get_default_client_token())
-                    if existing
-                    else get_default_client_token()
-                )
+                else (existing.client_token if existing else "")
             ),
         )
         save_config(cfg, cfg_path)

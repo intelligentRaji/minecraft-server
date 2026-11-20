@@ -101,7 +101,7 @@ ModSync separates mods into two categories:
    - Once installed, regular automatic syncs will preserve your `client-only` mods.
 
 > [!note] Custom Personal Client Mods
-> ModSync prunes `.jar` files in `mods/` that are not part of the server's `server-client` or `client-only` manifest so outdated or conflicting mod versions never prevent you from joining the server.
+> ModSync tracks server-managed `.jar` files (and replaces any duplicate Forge `modId` versions), so outdated or removed server mods are cleaned up automatically while your own personal client-only `.jar` mods remain untouched.
 
 ---
 

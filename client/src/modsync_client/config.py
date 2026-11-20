@@ -11,18 +11,6 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 
-def get_default_server_url() -> str:
-    """Return runtime environment ModSync server URL."""
-    raw = os.environ.get("MODSYNC_SERVER_URL") or os.environ.get("MODSYNC_DEFAULT_SERVER_URL") or ""
-    return raw.strip().rstrip("/")
-
-
-def get_default_client_token() -> str:
-    """Return runtime environment ModSync client auth token."""
-    return os.environ.get("MODSYNC_CLIENT_TOKEN", "").strip()
-
-
-DEFAULT_SERVER_URL = get_default_server_url()
 DEFAULT_POLL_FALLBACK_SECONDS = 300
 INVITE_URL_SCHEME = "modsync"
 HTTP_URL_SCHEMES = frozenset({"http", "https"})
@@ -73,14 +61,14 @@ class Config:
 
     @classmethod
     def from_env(cls) -> Config | None:
-        env_url = get_default_server_url()
+        env_url = os.environ.get("MODSYNC_SERVER_URL", "").strip().rstrip("/")
         env_mods = os.environ.get("MODSYNC_MODS_DIR", "").strip()
         if not env_url or not env_mods:
             return None
         return cls(
             server_url=env_url,
             mods_dir=env_mods,
-            client_token=get_default_client_token(),
+            client_token=os.environ.get("MODSYNC_CLIENT_TOKEN", "").strip(),
         )
 
 
@@ -171,20 +159,15 @@ def _deduplicate_paths(paths: list[Path]) -> list[Path]:
     return unique
 
 
-def detect_mods_dirs() -> list[Path]:
-    """Discover likely Minecraft launcher mods/ directories on the current OS."""
+def detect_minecraft_dirs() -> list[Path]:
+    """Discover likely Minecraft profile/instance root folders (parent of mods/)."""
     home = Path.home()
-    candidates = (
+    mods_candidates = (
         _windows_mods_candidates(home)
         if sys.platform == "win32"
         else _unix_mods_candidates(home)
     )
-    return _deduplicate_paths(candidates)
-
-
-def detect_minecraft_dirs() -> list[Path]:
-    """Discover likely Minecraft profile/instance root folders (parent of mods/)."""
-    return _deduplicate_paths([mods_dir.parent for mods_dir in detect_mods_dirs()])
+    return _deduplicate_paths([mods_dir.parent for mods_dir in mods_candidates])
 
 
 def resolve_mods_dir(selected_dir: Path | str) -> Path:
