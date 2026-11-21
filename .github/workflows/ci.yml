@@ -21,7 +21,6 @@ jobs:
         run: |
           uv sync --group dev
           uv run pytest -v
-          python3 -m unittest tests/test_manifest.py
       - name: Run client tests
         working-directory: client
         run: |
