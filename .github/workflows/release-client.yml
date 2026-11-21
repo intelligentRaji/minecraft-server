@@ -83,18 +83,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
+      - name: Set up MSVC environment for Windows PyInstaller bootloader build
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
       - name: Sync client __version__ with release version
         shell: bash
         run: |
           python3 -c 'from pathlib import Path; p = Path("client/src/modsync_client/__init__.py"); p.write_text("\"\"\"ModSync background client package.\"\"\"\n\n__version__ = \"${{ needs.prepare-release.outputs.app_version }}\"\n", encoding="utf-8")'
-      - name: Install client dependencies and run tests
+      - name: Install client dependencies (Windows, source-built PyInstaller bootloader)
+        if: matrix.os == 'windows-latest'
         working-directory: client
-        run: |
-          uv sync --group dev
-          uv run pytest -v
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: "1"
+        run: uv sync --group dev --no-binary-package pyinstaller
+      - name: Install client dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: client
+        run: uv sync --group dev
+      - name: Run client tests
+        working-directory: client
+        run: uv run --no-sync pytest -v
       - name: Build standalone binary with PyInstaller
         working-directory: client
-        run: uv run pyinstaller modsync.spec --clean --noconfirm
+        run: uv run --no-sync pyinstaller modsync.spec --clean --noconfirm
       - name: Build Windows Installer (Inno Setup)
         if: matrix.os == 'windows-latest'
         working-directory: client
