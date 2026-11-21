@@ -1,0 +1,29 @@
+name: CI Tests
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Run server sync tests
+        run: python3 -m unittest discover -s server -p "test_sync*.py"
+      - name: Run modsync_api tests
+        working-directory: modsync_api
+        run: |
+          uv sync --group dev
+          uv run pytest -v
+          python3 -m unittest tests/test_manifest.py
+      - name: Run client tests
+        working-directory: client
+        run: |
+          uv sync --group dev
+          uv run pytest -v
