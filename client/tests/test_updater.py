@@ -125,3 +125,14 @@ def test_download_and_apply_update_verifies_sha256_and_replaces(tmp_path: Path) 
                 bad_update, executable_path=target, platform="win32", client=client
             )
     assert target.read_bytes() == new_bytes
+
+
+def test_get_github_api_url_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    from modsync_client.updater import DEFAULT_GITHUB_API_URL, get_github_api_url
+
+    monkeypatch.delenv("MODSYNC_GITHUB_API_URL", raising=False)
+    assert get_github_api_url() == DEFAULT_GITHUB_API_URL
+
+    monkeypatch.setenv("MODSYNC_GITHUB_API_URL", "http://127.0.0.1:9999/")
+    assert get_github_api_url() == "http://127.0.0.1:9999"
+

@@ -19,6 +19,7 @@ from modsync_client.manifest import compute_sha256
 logger = logging.getLogger("modsync_client.updater")
 
 DEFAULT_GITHUB_REPO = "intelligentRaji/minecraft-server"
+DEFAULT_GITHUB_API_URL = "https://api.github.com"
 RELEASE_TAG_PREFIX = "client-v"
 CHECKSUMS_ASSET_NAME = "checksums.txt"
 REQUEST_TIMEOUT_SECONDS = 15.0
@@ -41,6 +42,14 @@ class UpdateInfo:
 def get_update_repo() -> str:
     """Return the GitHub owner/repo checked for ModSync client releases."""
     return os.environ.get("MODSYNC_UPDATE_REPO", DEFAULT_GITHUB_REPO).strip() or DEFAULT_GITHUB_REPO
+
+
+def get_github_api_url() -> str:
+    """Return the GitHub REST API base URL used for client update checks."""
+    return (
+        os.environ.get("MODSYNC_GITHUB_API_URL", DEFAULT_GITHUB_API_URL).strip().rstrip("/")
+        or DEFAULT_GITHUB_API_URL
+    )
 
 
 def parse_version(raw: str) -> tuple[int, ...]:
@@ -126,7 +135,7 @@ def check_for_update(
         return None
 
     target_repo = repo or get_update_repo()
-    api_url = f"https://api.github.com/repos/{target_repo}/releases?per_page=10"
+    api_url = f"{get_github_api_url()}/repos/{target_repo}/releases?per_page=10"
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": f"ModSync/{current_version}",

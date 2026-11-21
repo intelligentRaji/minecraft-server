@@ -36,3 +36,43 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: 
 
 [Run]
 Filename: "{app}\ModSync.exe"; Description: "Launch ModSync"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+Type: files; Name: "{app}\ModSync.exe.old"
+Type: files; Name: "{app}\.ModSync.exe.new"
+Type: files; Name: "{userstartup}\ModSync.bat"
+Type: dirifempty; Name: "{app}"
+
+[Code]
+function IsModSyncRunning(): Boolean;
+var
+  AppExe: String;
+  Stream: TFileStream;
+begin
+  Result := False;
+  AppExe := ExpandConstant('{app}\ModSync.exe');
+  if not FileExists(AppExe) then
+    Exit;
+  try
+    Stream := TFileStream.Create(AppExe, fmOpenReadWrite or fmShareExclusive);
+    Stream.Free;
+  except
+    Result := True;
+  end;
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  if IsModSyncRunning() then
+  begin
+    SuppressibleMsgBox(
+      'ModSync is currently running. Please quit ModSync before uninstalling.',
+      mbError,
+      MB_OK,
+      IDOK
+    );
+    Result := False;
+    Exit;
+  end;
+  Result := True;
+end;

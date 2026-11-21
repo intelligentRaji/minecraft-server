@@ -19,6 +19,12 @@ from .config import (
 
 logger = logging.getLogger("modsync_client.onboarding")
 
+_last_gui_unavailable = False
+
+
+def _is_interactive_tty() -> bool:
+    return sys.stdin is not None and sys.stdin.isatty()
+
 
 def _existing_minecraft_dir(existing: Config) -> str:
     mods_path = existing.mods_path
@@ -27,7 +33,11 @@ def _existing_minecraft_dir(existing: Config) -> str:
 
 def _prompt_with_default(label: str, default: str = "") -> str:
     prompt = f"{label} [{default}]: " if default else f"{label}: "
-    return input(prompt).strip() or default
+    try:
+        return input(prompt).strip() or default
+    except (EOFError, KeyboardInterrupt):
+        logger.info("Setup cancelled.")
+        raise SystemExit(0) from None
 
 
 def _build_prompted_config(
@@ -107,14 +117,18 @@ def prompt_config_gui(
     preset_token: str | None = None,
 ) -> Config | None:
     """Prompt the user for Minecraft folder (and invite link/URL when not preconfigured) via tkinter."""
+    global _last_gui_unavailable
     try:
         import tkinter as tk
         from tkinter import filedialog, messagebox, simpledialog
+
+        root = tk.Tk()
     except Exception as exc:  # pragma: no cover - headless environments without tk
+        _last_gui_unavailable = True
         logger.error("tkinter unavailable for GUI setup: %s", exc)
         return None
 
-    root = tk.Tk()
+    _last_gui_unavailable = False
     root.withdraw()
     root.attributes("-topmost", True)
     try:
@@ -146,11 +160,12 @@ def prompt_config_gui(
             detected = detect_minecraft_dirs()
             initial_dir = str(detected[0]) if detected else str(Path.home())
 
-        messagebox.showinfo(
+        if not messagebox.askokcancel(
             "ModSync Setup",
             "Select your Minecraft folder on the next dialog (the 'mods' folder inside it will be synced).",
             parent=root,
-        )
+        ):
+            return None
         selected_dir = filedialog.askdirectory(
             title="Select Minecraft folder",
             initialdir=initial_dir,
@@ -177,12 +192,17 @@ def setup_gui_or_cli(
     preset_token: str | None = None,
 ) -> Config:
     """Prompt via tkinter GUI with terminal fallback when running in an interactive TTY."""
+    global _last_gui_unavailable
+    _last_gui_unavailable = False
     cfg = prompt_config_gui(existing, preset_url=preset_url, preset_token=preset_token)
     if cfg is not None:
         return cfg
-    if sys.stdin.isatty():
-        return prompt_config_cli(existing, preset_url=preset_url, preset_token=preset_token)
-    raise SystemExit("Setup cancelled.")
+    if _last_gui_unavailable:
+        if _is_interactive_tty():
+            return prompt_config_cli(existing, preset_url=preset_url, preset_token=preset_token)
+        raise SystemExit("Setup cancelled: GUI unavailable and stdin is not a TTY.")
+    logger.info("Setup cancelled.")
+    raise SystemExit(0)
 
 
 def _merge_cli_overrides(existing: Config, args: argparse.Namespace) -> tuple[Config, bool]:
@@ -248,8 +268,8 @@ def resolve_or_setup_config(args: argparse.Namespace) -> Config:
         save_config(env_cfg, cfg_path)
         return env_cfg
 
-    if args.headless or args.sync_once:
-        if not sys.stdin.isatty():
+    if args.headless or args.sync_once or getattr(args, "install_recommended", False):
+        if not _is_interactive_tty():
             raise SystemExit(
                 "No config found. Pass an invite URI or --server-url and --mods-dir (or run with --setup)."
             )

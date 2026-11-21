@@ -1,4 +1,4 @@
-.PHONY: help up down restart reload logs modsync-logs status sync-dry backup lp-snapshot test client-build invite-link progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
+.PHONY: help up down restart reload logs modsync-logs status sync-dry backup lp-snapshot test client-build client-e2e invite-link progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
 
 COMPOSE := docker compose
 SYNC_DRIVE := python3 .agents/plugins/minecraft-manager/skills/minecraft-gdrive-sync/scripts/sync_mods_drive.py
@@ -53,6 +53,9 @@ test: ## Run server, modsync-api, and client unit tests
 
 client-build: ## Build standalone client binary via PyInstaller (host OS)
 	cd client && uv sync --group dev && uv run pyinstaller modsync.spec --clean --noconfirm
+
+client-e2e: ## Run cross-platform client E2E tests against built binary
+	uv --directory client-e2e run pytest -v
 
 invite-link: ## Print modsync:// invite link from .env (MODSYNC_SERVER_URL + MODSYNC_CLIENT_TOKEN)
 	@url="$${MODSYNC_SERVER_URL:-}"; token="$${MODSYNC_CLIENT_TOKEN:-}"; \

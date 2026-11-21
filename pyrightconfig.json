@@ -17,6 +17,13 @@
       ]
     },
     {
+      "root": "client-e2e",
+      "extraPaths": [
+        "client-e2e",
+        "client-e2e/.venv/lib/python3.12/site-packages"
+      ]
+    },
+    {
       "root": "server/mods",
       "extraPaths": [
         "server/mods"

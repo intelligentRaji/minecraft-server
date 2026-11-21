@@ -169,3 +169,112 @@ def test_resolve_or_setup_config_with_invite_uri(tmp_path: Path) -> None:
         mods_dir=str(mods_dir),
         client_token="new-tok",
     )
+
+
+@pytest.mark.parametrize("exc_type", [EOFError, KeyboardInterrupt])
+def test_prompt_config_cli_cancellation_exits_zero(
+    monkeypatch: pytest.MonkeyPatch,
+    exc_type: type[BaseException],
+) -> None:
+    def raise_cancel(_prompt: str = "") -> str:
+        raise exc_type()
+
+    monkeypatch.setattr("builtins.input", raise_cancel)
+    with pytest.raises(SystemExit) as exc_info:
+        prompt_config_cli(None)
+    assert exc_info.value.code == 0
+
+
+def test_setup_gui_or_cli_cancellation_exits_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    import modsync_client.onboarding as onboarding
+
+    monkeypatch.setattr(onboarding, "prompt_config_gui", lambda *_a, **_kw: None)
+    with pytest.raises(SystemExit) as exc_info:
+        onboarding.setup_gui_or_cli(None)
+    assert exc_info.value.code == 0
+
+
+def test_prompt_config_gui_steps_and_cancellations(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import sys
+    import types
+    import modsync_client.onboarding as onboarding
+
+    invite = build_invite_url("https://mods.example.com", "gui-tok")
+    mc_dir = tmp_path / "Instance"
+    mc_dir.mkdir()
+
+    def _install_fake_tk(
+        askstring_replies: list[str | None],
+        askokcancel_reply: bool = True,
+        askdirectory_reply: str = "",
+    ) -> list[tuple[str, str]]:
+        errors_shown: list[tuple[str, str]] = []
+        replies = iter(askstring_replies)
+
+        fake_tk = types.ModuleType("tkinter")
+
+        class FakeRoot:
+            def withdraw(self) -> None:
+                pass
+
+            def attributes(self, *_a: object) -> None:
+                pass
+
+            def destroy(self) -> None:
+                pass
+
+        fake_tk.Tk = FakeRoot  # type: ignore[attr-defined]
+
+        fake_simple = types.ModuleType("tkinter.simpledialog")
+        fake_simple.askstring = lambda *_a, **_kw: next(replies, None)  # type: ignore[attr-defined]
+
+        fake_msg = types.ModuleType("tkinter.messagebox")
+        fake_msg.showerror = lambda title, msg, **_kw: errors_shown.append((title, msg))  # type: ignore[attr-defined]
+        fake_msg.askokcancel = lambda *_a, **_kw: askokcancel_reply  # type: ignore[attr-defined]
+
+        fake_file = types.ModuleType("tkinter.filedialog")
+        fake_file.askdirectory = lambda *_a, **_kw: askdirectory_reply  # type: ignore[attr-defined]
+
+        fake_tk.simpledialog = fake_simple  # type: ignore[attr-defined]
+        fake_tk.messagebox = fake_msg  # type: ignore[attr-defined]
+        fake_tk.filedialog = fake_file  # type: ignore[attr-defined]
+
+        monkeypatch.setitem(sys.modules, "tkinter", fake_tk)
+        monkeypatch.setitem(sys.modules, "tkinter.simpledialog", fake_simple)
+        monkeypatch.setitem(sys.modules, "tkinter.messagebox", fake_msg)
+        monkeypatch.setitem(sys.modules, "tkinter.filedialog", fake_file)
+        return errors_shown
+
+    # Step 1 cancel
+    _install_fake_tk([None])
+    with pytest.raises(SystemExit) as exc1:
+        onboarding.setup_gui_or_cli(None)
+    assert exc1.value.code == 0
+
+    # Invalid invite -> error dialog -> Step 2 cancel
+    errors = _install_fake_tk(["ftp://bad", invite], askokcancel_reply=False)
+    with pytest.raises(SystemExit) as exc2:
+        onboarding.setup_gui_or_cli(None)
+    assert exc2.value.code == 0
+    assert len(errors) == 1
+    assert errors[0][0] == "Invalid Invite Link"
+
+    # Step 3 cancel (folder picker cancelled)
+    _install_fake_tk([invite], askokcancel_reply=True, askdirectory_reply="")
+    with pytest.raises(SystemExit) as exc3:
+        onboarding.setup_gui_or_cli(None)
+    assert exc3.value.code == 0
+
+    # Full completion
+    _install_fake_tk([invite], askokcancel_reply=True, askdirectory_reply=str(mc_dir))
+    cfg = onboarding.setup_gui_or_cli(None)
+    assert cfg == Config(
+        server_url="https://mods.example.com",
+        mods_dir=str(mc_dir / "mods"),
+        client_token="gui-tok",
+    )
+
+
