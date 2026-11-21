@@ -56,6 +56,11 @@ class ModSyncCli:
         """Return the GitHub release asset filename expected on the current platform."""
         return WIN_APP_EXE_NAME if sys.platform == "win32" else LINUX_APP_EXE_NAME
 
+    @property
+    def release_asset_name(self) -> str:
+        """Return the GitHub release asset filename expected on the current platform."""
+        return self.platform_asset_name
+
     def old_binary_path(self, binary: Path | None = None) -> Path:
         """Return the Windows `.old` backup path corresponding to a binary."""
         target = binary or self.binary
@@ -181,6 +186,38 @@ class ModSyncCli:
                 cfg,
             ],
             env=self.isolated_env.env,
+        )
+
+    def start_tray(
+        self,
+        *,
+        server_url: str,
+        token: str,
+        github_api_url: str,
+        env_overrides: dict[str, str] | None = None,
+        mods_dir: Path | None = None,
+        config_path: Path | None = None,
+    ) -> subprocess.Popen[str]:
+        """Spawn ModSync in tray mode (no --headless, no --sync-once) via the test spawner."""
+        target_mods = mods_dir if mods_dir is not None else self.isolated_env.mods_dir
+        cfg = config_path if config_path is not None else self.isolated_env.config_path
+        env = dict(self.isolated_env.env)
+        if env_overrides:
+            env.update(env_overrides)
+        env[ENV_MODSYNC_GITHUB_API_URL] = github_api_url
+        return self.spawner(
+            [
+                self.binary,
+                FLAG_SERVER_URL,
+                server_url,
+                FLAG_TOKEN,
+                token,
+                FLAG_MODS_DIR,
+                target_mods,
+                FLAG_CONFIG,
+                cfg,
+            ],
+            env=env,
         )
 
     def supports_tkinter(self, *, env: dict[str, str] | None = None) -> bool:
