@@ -49,7 +49,7 @@ lp-snapshot: ## Export LuckPerms snapshot via RCON to server/mods/luckperms/conf
 test: ## Run server, modsync-api, and client unit tests
 	python3 -m unittest discover -s server -p "test_sync*.py"
 	uv --directory modsync_api run pytest -v
-	PYTHONPATH=client/src modsync_api/.venv/bin/pytest client/tests -v
+	uv --directory client run pytest -v
 
 client-build: ## Build standalone client binary via PyInstaller (host OS)
 	cd client && uv sync --group dev && uv run pyinstaller modsync.spec --clean --noconfirm

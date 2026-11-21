@@ -2,14 +2,59 @@ name: Release ModSync Client
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - "client/**"
     tags:
       - "client-v*"
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Create/update GitHub Release for the current client/pyproject.toml version"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      should_release: ${{ steps.version.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve version and release decision
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/client-v* ]]; then
+            app_version="${GITHUB_REF_NAME#client-v}"
+            tag_name="${GITHUB_REF_NAME}"
+            should_release="true"
+          else
+            app_version="$(python3 -c 'import tomllib; print(tomllib.load(open("client/pyproject.toml", "rb"))["project"]["version"])')"
+            tag_name="client-v${app_version}"
+            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+              should_release="${{ inputs.publish_release }}"
+            elif git rev-parse -q --verify "refs/tags/${tag_name}" >/dev/null; then
+              echo "Tag ${tag_name} already exists; running build/test without creating a release."
+              should_release="false"
+            else
+              echo "New version ${app_version} detected on main; will publish ${tag_name}."
+              should_release="true"
+            fi
+          fi
+          echo "app_version=${app_version}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
+          echo "should_release=${should_release}" >> "$GITHUB_OUTPUT"
+
   test-server-manifest:
     runs-on: ubuntu-latest
     steps:
@@ -20,10 +65,9 @@ jobs:
         run: |
           uv sync --group dev
           uv run pytest
-          python3 -m unittest tests/test_manifest.py
 
   build-client:
-    needs: test-server-manifest
+    needs: [prepare-release, test-server-manifest]
     strategy:
       matrix:
         include:
@@ -39,21 +83,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
-      - name: Resolve client version
-        id: version
+      - name: Sync client __version__ with release version
         shell: bash
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/client-v* ]]; then
-            echo "app_version=${GITHUB_REF_NAME#client-v}" >> "$GITHUB_OUTPUT"
-          else
-            ver="$(python3 -c 'import tomllib; print(tomllib.load(open("client/pyproject.toml", "rb"))["project"]["version"])')"
-            echo "app_version=${ver}" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Stamp client version for release tag
-        if: startsWith(github.ref, 'refs/tags/client-v')
-        shell: bash
-        run: |
-          python3 -c 'from pathlib import Path; p = Path("client/src/modsync_client/__init__.py"); p.write_text("\"\"\"ModSync background client package.\"\"\"\n\n__version__ = \"${{ steps.version.outputs.app_version }}\"\n", encoding="utf-8")'
+          python3 -c 'from pathlib import Path; p = Path("client/src/modsync_client/__init__.py"); p.write_text("\"\"\"ModSync background client package.\"\"\"\n\n__version__ = \"${{ needs.prepare-release.outputs.app_version }}\"\n", encoding="utf-8")'
       - name: Install client dependencies and run tests
         working-directory: client
         run: |
@@ -75,7 +108,7 @@ jobs:
             choco install innosetup -y
             $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           }
-          & $iscc "/DMyAppVersion=${{ steps.version.outputs.app_version }}" installer.iss
+          & $iscc "/DMyAppVersion=${{ needs.prepare-release.outputs.app_version }}" installer.iss
       - name: Rename Linux binary
         if: matrix.os == 'ubuntu-latest'
         run: mv client/dist/ModSync client/dist/ModSync-linux
@@ -86,8 +119,8 @@ jobs:
           path: ${{ matrix.upload-path }}
 
   publish-release:
-    needs: build-client
-    if: startsWith(github.ref, 'refs/tags/client-v')
+    needs: [prepare-release, build-client]
+    if: needs.prepare-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -100,6 +133,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare-release.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
           files: |
             artifacts/ModSync.exe

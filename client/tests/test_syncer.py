@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import json
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -52,11 +55,24 @@ def _manifest_for(
     return {"version": version, "mods": mods}
 
 
-def test_initial_sync_update_and_prune(mods_dir: Path, staging_dir: Path) -> None:
-    (mods_dir / "old-mod.jar").write_bytes(b"stale")
+def _make_forge_jar_bytes(mod_id: str, extra: str = "1.0.0") -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr(
+            "META-INF/mods.toml",
+            f'modLoader="javafml"\n[[mods]]\nmodId="{mod_id}"\nversion="{extra}"\n',
+        )
+    return buf.getvalue()
+
+
+def test_sync_preserves_unknown_user_mods_and_prunes_managed(
+    mods_dir: Path,
+    staging_dir: Path,
+) -> None:
+    (mods_dir / "user-zoom.jar").write_bytes(b"personal-client-mod")
     remote_files = {
         "create.jar": b"create-v1",
-        "jade.jar": b"jade-v1",
+        "old-mod.jar": b"old-v1",
     }
     transport = FakeTransport(_manifest_for(remote_files, "v1"), remote_files)
     syncer = ModSyncer(
@@ -69,9 +85,9 @@ def test_initial_sync_update_and_prune(mods_dir: Path, staging_dir: Path) -> Non
 
     res = syncer.sync_once()
     assert res.status == SyncStatus.SYNCED
-    assert res.added == ("create.jar", "jade.jar")
-    assert res.removed == ("old-mod.jar",)
-    assert not (mods_dir / "old-mod.jar").exists()
+    assert res.added == ("create.jar", "old-mod.jar")
+    assert res.removed == ()
+    assert (mods_dir / "user-zoom.jar").read_bytes() == b"personal-client-mod"
     assert (mods_dir / "create.jar").read_bytes() == b"create-v1"
 
     # Second sync is a no-op with 0 downloads
@@ -79,6 +95,107 @@ def test_initial_sync_update_and_prune(mods_dir: Path, staging_dir: Path) -> Non
     res2 = syncer.sync_once()
     assert res2.status == SyncStatus.SYNCED
     assert transport.downloads == []
+
+    # Server removes old-mod.jar, adds new-mod.jar, and updates create.jar
+    remote_v2 = {
+        "create.jar": b"create-v2",
+        "new-mod.jar": b"new-v1",
+    }
+    transport.manifest_payload = _manifest_for(remote_v2, "v2")
+    transport.files = remote_v2
+
+    res3 = syncer.sync_once()
+    assert res3.status == SyncStatus.SYNCED
+    assert res3.added == ("new-mod.jar",)
+    assert res3.updated == ("create.jar",)
+    assert res3.removed == ("old-mod.jar",)
+    assert not (mods_dir / "old-mod.jar").exists()
+    assert (mods_dir / "new-mod.jar").read_bytes() == b"new-v1"
+    assert (mods_dir / "create.jar").read_bytes() == b"create-v2"
+    assert (mods_dir / "user-zoom.jar").read_bytes() == b"personal-client-mod"
+
+
+def test_sync_replaces_unmanaged_duplicate_forge_mod_id(
+    mods_dir: Path,
+    staging_dir: Path,
+) -> None:
+    (mods_dir / "create-6.0.7.jar").write_bytes(_make_forge_jar_bytes("create", "6.0.7"))
+    (mods_dir / "zoomify-2.14.0.jar").write_bytes(_make_forge_jar_bytes("zoomify", "2.14.0"))
+
+    create_v2_bytes = _make_forge_jar_bytes("create", "6.0.8")
+    remote_files = {"create-6.0.8.jar": create_v2_bytes}
+    transport = FakeTransport(_manifest_for(remote_files, "v1"), remote_files)
+    syncer = ModSyncer(
+        server_url="https://mods.example.com",
+        mods_dir=mods_dir,
+        staging_dir=staging_dir,
+        transport=transport,
+        mc_running_check=lambda: False,
+    )
+
+    res = syncer.sync_once()
+    assert res.status == SyncStatus.SYNCED
+    assert res.added == ("create-6.0.8.jar",)
+    assert res.removed == ("create-6.0.7.jar",)
+    assert not (mods_dir / "create-6.0.7.jar").exists()
+    assert (mods_dir / "create-6.0.8.jar").read_bytes() == create_v2_bytes
+    assert (mods_dir / "zoomify-2.14.0.jar").is_file()
+
+
+def test_sync_across_skipped_versions_deletes_all_removed_server_mods(
+    mods_dir: Path,
+    staging_dir: Path,
+) -> None:
+    (mods_dir / "user-zoom.jar").write_bytes(b"personal-client-mod")
+    v1_files: dict[str, tuple[str, bytes]] = {
+        "modA-1.0.jar": ("server-client", b"a1"),
+        "modB-1.0.jar": ("server-client", b"b1"),
+        "modC-1.0.jar": ("server-client", b"c1"),
+        "old-client.jar": ("client-only", b"oc1"),
+    }
+    transport = FakeTransport(
+        _manifest_for(v1_files, "v1"),
+        {name: data for name, (_cat, data) in v1_files.items()},
+    )
+    syncer = ModSyncer(
+        server_url="https://mods.example.com",
+        mods_dir=mods_dir,
+        staging_dir=staging_dir,
+        transport=transport,
+        mc_running_check=lambda: False,
+    )
+
+    syncer.sync_once()
+    syncer.install_recommended()
+
+    managed_file = mods_dir / ".modsync-managed.json"
+    assert json.loads(managed_file.read_text(encoding="utf-8")) == {
+        "managed": ["modA-1.0.jar", "modB-1.0.jar", "modC-1.0.jar", "old-client.jar"]
+    }
+
+    # Client is offline for v2..v4 and next syncs directly at v5
+    v5_files: dict[str, tuple[str, bytes]] = {
+        "modB-3.0.jar": ("server-client", b"b3"),
+        "modC-1.0.jar": ("server-client", b"c1"),
+        "modE-1.0.jar": ("server-client", b"e1"),
+    }
+    transport.manifest_payload = _manifest_for(v5_files, "v5")
+    transport.files = {name: data for name, (_cat, data) in v5_files.items()}
+
+    res = syncer.sync_once()
+    assert res.status == SyncStatus.SYNCED
+    assert res.added == ("modB-3.0.jar", "modE-1.0.jar")
+    assert res.removed == ("modA-1.0.jar", "modB-1.0.jar", "old-client.jar")
+    assert not (mods_dir / "modA-1.0.jar").exists()
+    assert not (mods_dir / "modB-1.0.jar").exists()
+    assert not (mods_dir / "old-client.jar").exists()
+    assert (mods_dir / "modB-3.0.jar").read_bytes() == b"b3"
+    assert (mods_dir / "modC-1.0.jar").read_bytes() == b"c1"
+    assert (mods_dir / "modE-1.0.jar").read_bytes() == b"e1"
+    assert (mods_dir / "user-zoom.jar").read_bytes() == b"personal-client-mod"
+    assert json.loads(managed_file.read_text(encoding="utf-8")) == {
+        "managed": ["modB-3.0.jar", "modC-1.0.jar", "modE-1.0.jar"]
+    }
 
 
 def test_stages_when_minecraft_running_then_applies_on_exit(

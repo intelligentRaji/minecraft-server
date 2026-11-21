@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.headless:
         return _run_headless(config)
 
-    from .tray import ModSyncTrayApp
+    from modsync_client.tray import ModSyncTrayApp
 
     ModSyncTrayApp(config, args.config).run()
     return 0
