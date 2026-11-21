@@ -101,12 +101,18 @@ class DefaultMods:
     )
 
 
+class ValidInputs:
+    """Valid invite/URL fixture payloads used for onboarding and prompt tests."""
+
+    VALID_SERVER_URL_LINE = "http://127.0.0.1:8080\n"
+    STATIC_VALID_INVITE = "modsync://connect?url=http://127.0.0.1:9999&token=e2e-test-token"
+
+
 class InvalidInputs:
     """Invalid invite/URL/token fixture payloads used for negative tests."""
 
     CLI_INVALID_INVITE = "modsync://connect?url=ftp://invalid"
     GUI_INVALID_INVITE = "ftp://not-a-valid-modsync-invite"
-    FALLBACK_SERVER_LINE = "http://127.0.0.1:8080\n"
     CLIENT_TOKEN = "wrong-client-token"
 
 

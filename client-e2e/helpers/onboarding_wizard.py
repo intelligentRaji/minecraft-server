@@ -107,6 +107,7 @@ class OnboardingWizard:
         assert rc == EXIT_CODE_SUCCESS, (
             f"Expected exit code {EXIT_CODE_SUCCESS} on completion, got {rc}: {stderr}"
         )
+        assert TRACEBACK_MARKER not in stderr
         cfg_path = self.cli.isolated_env.config_path
         assert cfg_path.is_file()
         return PersistedConfigSnapshot.from_file(cfg_path)

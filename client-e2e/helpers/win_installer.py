@@ -201,40 +201,87 @@ class WindowsInstallerHarness:
         """Run the installed unins000.exe silently and return its exit code."""
         return run_inno_uninstaller(self.uninstaller_exe)
 
-    def uninstall_if_present(self) -> None:
+    def uninstall_if_present(self, *, assert_clean: bool = False) -> None:
         """Cleanly remove an existing installation if unins000.exe is present."""
         if self.uninstaller_exe.is_file():
-            self.uninstall_silent()
+            rc = self.uninstall_silent()
+            if assert_clean and rc != EXIT_CODE_SUCCESS:
+                raise AssertionError(
+                    f"Pre-existing installation uninstall failed with exit code {rc}: "
+                    f"{self.uninstaller_exe}"
+                )
 
     def assert_installed_and_registered(self) -> None:
         """Assert binary, uninstaller, protocol handler, and autostart registry keys exist."""
         assert self.installed_exe.is_file(), f"Expected installed binary at {self.installed_exe}"
         assert self.uninstaller_exe.is_file(), f"Expected uninstaller at {self.uninstaller_exe}"
 
-        assert hkcu_key_exists(REG_PROTOCOL_KEY)
-        assert read_hkcu_value(REG_PROTOCOL_KEY, "") == REG_PROTOCOL_VALUE_DATA
-        assert read_hkcu_value(REG_PROTOCOL_KEY, REG_PROTOCOL_MARKER_NAME) == ""
-        assert read_hkcu_value(REG_PROTOCOL_COMMAND_KEY, "") == f'"{self.installed_exe}" "%1"'
-        assert read_hkcu_value(REG_RUN_KEY, REG_RUN_VALUE_NAME) == f'"{self.installed_exe}"'
+        assert hkcu_key_exists(REG_PROTOCOL_KEY), (
+            f"Expected HKCU protocol registry key {REG_PROTOCOL_KEY!r} to exist"
+        )
+        protocol_data = read_hkcu_value(REG_PROTOCOL_KEY, "")
+        assert protocol_data == REG_PROTOCOL_VALUE_DATA, (
+            f"Expected HKCU {REG_PROTOCOL_KEY!r} default value {REG_PROTOCOL_VALUE_DATA!r}, "
+            f"got {protocol_data!r}"
+        )
+        marker_val = read_hkcu_value(REG_PROTOCOL_KEY, REG_PROTOCOL_MARKER_NAME)
+        assert marker_val == "", (
+            f"Expected HKCU {REG_PROTOCOL_KEY!r}\\{REG_PROTOCOL_MARKER_NAME!r} == '', "
+            f"got {marker_val!r}"
+        )
+        expected_cmd = f'"{self.installed_exe}" "%1"'
+        actual_cmd = read_hkcu_value(REG_PROTOCOL_COMMAND_KEY, "")
+        assert actual_cmd == expected_cmd, (
+            f"Expected HKCU {REG_PROTOCOL_COMMAND_KEY!r} == {expected_cmd!r}, got {actual_cmd!r}"
+        )
+        expected_run = f'"{self.installed_exe}"'
+        actual_run = read_hkcu_value(REG_RUN_KEY, REG_RUN_VALUE_NAME)
+        assert actual_run == expected_run, (
+            f"Expected HKCU {REG_RUN_KEY!r}\\{REG_RUN_VALUE_NAME!r} == {expected_run!r}, "
+            f"got {actual_run!r}"
+        )
 
-    def seed_leftover_artifacts(self, old_payload: bytes, new_payload: bytes) -> None:
-        """Seed simulated updater .old/.new leftovers and legacy Startup .bat for uninstall tests."""
+    def seed_leftover_artifacts(
+        self,
+        old_payload: bytes,
+        new_payload: bytes,
+        *,
+        include_startup_script: bool = True,
+    ) -> None:
+        """Seed simulated updater .old/.new leftovers and optional legacy Startup .bat for uninstall tests."""
         self.old_leftover_path.write_bytes(old_payload)
         self.new_leftover_path.write_bytes(new_payload)
+        if include_startup_script:
+            self.seed_startup_script()
+
+    def seed_startup_script(self) -> None:
+        """Create a legacy Start Menu Startup ModSync.bat script for uninstall cleanup tests."""
         self.startup_script.parent.mkdir(parents=True, exist_ok=True)
         self.startup_script.write_text(
             f'@echo off\nstart "" "{self.installed_exe}"\n',
             encoding="utf-8",
         )
 
-    def assert_protocol_registration_intact(self) -> None:
-        """Assert installation files and protocol key survived a blocked uninstall attempt."""
+    def assert_installation_intact(self) -> None:
+        """Assert installation files, leftovers, startup script, and registry keys survived a blocked uninstall attempt."""
         assert self.installed_exe.is_file(), "ModSync.exe must remain intact after blocked uninstall"
         assert self.uninstaller_exe.is_file(), (
             "unins000.exe must remain intact after blocked uninstall"
         )
+        assert self.old_leftover_path.is_file(), (
+            "Leftover .old binary must remain intact after blocked uninstall"
+        )
+        assert self.new_leftover_path.is_file(), (
+            "Leftover .new binary must remain intact after blocked uninstall"
+        )
+        assert self.startup_script.is_file(), (
+            "Legacy Startup script must remain intact after blocked uninstall"
+        )
         assert hkcu_key_exists(REG_PROTOCOL_KEY), (
             "Protocol registry key must remain intact after blocked uninstall"
+        )
+        assert read_hkcu_value(REG_RUN_KEY, REG_RUN_VALUE_NAME) == f'"{self.installed_exe}"', (
+            "Run autostart registry value must remain intact after blocked uninstall"
         )
 
     def wait_for_complete_removal(self) -> None:
@@ -245,12 +292,25 @@ class WindowsInstallerHarness:
             interval=POLL_INTERVAL_DEFAULT,
             description="complete removal of {localappdata}\\Programs\\ModSync",
         )
-        assert not self.installed_exe.exists()
-        assert not self.old_leftover_path.exists()
-        assert not self.new_leftover_path.exists()
-        assert not self.startup_script.exists()
-        assert not hkcu_key_exists(REG_PROTOCOL_KEY)
-        assert read_hkcu_value(REG_RUN_KEY, REG_RUN_VALUE_NAME) is None
+        assert not self.installed_exe.exists(), (
+            f"Installed executable still exists after uninstall: {self.installed_exe}"
+        )
+        assert not self.old_leftover_path.exists(), (
+            f"Leftover .old binary still exists after uninstall: {self.old_leftover_path}"
+        )
+        assert not self.new_leftover_path.exists(), (
+            f"Leftover .new binary still exists after uninstall: {self.new_leftover_path}"
+        )
+        assert not self.startup_script.exists(), (
+            f"Legacy Startup script still exists after uninstall: {self.startup_script}"
+        )
+        assert not hkcu_key_exists(REG_PROTOCOL_KEY), (
+            f"Protocol registry key still exists after uninstall: {REG_PROTOCOL_KEY!r}"
+        )
+        remaining_run = read_hkcu_value(REG_RUN_KEY, REG_RUN_VALUE_NAME)
+        assert remaining_run is None, (
+            f"Autostart registry value still exists after uninstall: {remaining_run!r}"
+        )
 
     def cleanup(self) -> None:
         """Best-effort teardown of startup script and installation after test completion."""
