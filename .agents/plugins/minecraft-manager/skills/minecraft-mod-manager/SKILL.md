@@ -58,17 +58,28 @@ After adding or removing a server mod (`server-client` or `server-only`) in `mod
 
 ---
 
-### Step 5: Synchronize with Google Drive (Final Step)
+### Step 5: Patching an Existing Mod In-Place (Same Filename)
+When patching or rebuilding an existing `.jar` without changing its filename (so `modpack/<category>/<mod>.jar` keeps the same name):
+
+1. **Back up & Update `modpack/`:** Keep a backup copy outside `modpack/` (e.g., scratch/backups), write the patched `.jar` to `modpack/<category>/<mod>.jar` (never edit only `server/data/mods/`, which is overwritten on startup), and verify bytecode/unit tests.
+2. **Apply Locally & Refresh `modsync-api`:**
+   * **For `server-client` or `server-only`:** Run `python3 server/sync_mods.py --skip-api` (when stopped) or ask the user to run `make restart` (when running) so `server/data/mods/` and `modsync-api` stay in sync, then verify `docker compose logs --tail=50 mc` reports `Done (...s)!`. Because `modsync-api` tracks mods by SHA-256, `modsync-client` players automatically download the patched jar on next sync/reconnect.
+   * **For `client-only`:** Run `make reload` so `modsync-api` updates the SHA-256 in `/api/manifest`.
+
+---
+
+### Step 6: Synchronize with Google Drive (Final Step)
 After any mod additions, upgrades, or deletions are verified locally:
 1. **Adding / Updating Mods:** Ask the user:
    > *"Would you like me to upload the updated mods to your Google Drive (`minecraft-server/mods/`) for safe backup and sharing?"*
-2. **Removing Mods:** Ask the user:
+2. **Replacing a Patched Mod (Same Filename):** When activating **`minecraft-gdrive-sync`**, ensure the old remote copy is trashed first so the patched `.jar` is re-uploaded rather than skipped by filename matching.
+3. **Removing Mods:** Ask the user:
    > *"Would you like me to remove the deleted mods from your Google Drive (`minecraft-server/mods/`) to maintain zero drift?"*
 
 Upon user approval, activate the **`minecraft-gdrive-sync`** skill to perform the Google Drive synchronization.
 
 ---
 
-### Step 6: Troubleshooting Startup Errors
+### Step 7: Troubleshooting Startup Errors
 1. **Missing Dependency Range:** Check logs for `Missing or unsupported mandatory dependencies: Mod ID: '<id>'`. Query and download the missing library using Steps 1–3.
 2. **Headless Crash:** If a `NoClassDefFoundError` or rendering error appears, ensure no client-side UI mods were placed into `server-client/` or `server-only/`. Move them to `client-only/`, then ask the user to run `make restart` to prune them from `server/data/mods/`.

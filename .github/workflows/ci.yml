@@ -26,3 +26,58 @@ jobs:
         run: |
           uv sync --group dev
           uv run pytest -v
+
+  client-e2e:
+    needs: [test]
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Install Linux Tkinter and X11 E2E dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xvfb xdotool openbox
+      - name: Install client dependencies
+        working-directory: client
+        run: uv sync --group dev
+      - name: Build standalone binary with PyInstaller
+        working-directory: client
+        run: uv run --no-sync pyinstaller modsync.spec --clean --noconfirm
+      - name: Build Windows Installer (Inno Setup)
+        if: matrix.os == 'windows-latest'
+        working-directory: client
+        shell: pwsh
+        run: |
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+          if (-not $iscc) {
+            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          }
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y
+            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          }
+          & $iscc installer.iss
+      - name: Rename Linux binary
+        if: matrix.os == 'ubuntu-latest'
+        run: mv client/dist/ModSync client/dist/ModSync-linux
+      - name: Install client-e2e dependencies
+        working-directory: client-e2e
+        run: uv sync
+      - name: Run client E2E tests (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: client-e2e
+        env:
+          MODSYNC_INSTALLER: ${{ github.workspace }}/client/dist/ModSync-Setup.exe
+        run: uv run --no-sync pytest -v
+      - name: Run client E2E tests (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: client-e2e
+        env:
+          MODSYNC_BIN: ${{ github.workspace }}/client/dist/ModSync-linux
+        run: uv run --no-sync pytest -v
