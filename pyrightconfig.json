@@ -24,6 +24,12 @@
       ]
     },
     {
+      "root": "ci",
+      "extraPaths": [
+        "."
+      ]
+    },
+    {
       "root": "server/mods",
       "extraPaths": [
         "server/mods"

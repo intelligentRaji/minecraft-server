@@ -3,10 +3,20 @@ name: CI Tests
 on:
   push:
     branches:
-      - develop
+      - "**"
+      - "!main"
   pull_request:
     branches:
       - main
+      - develop
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   test:
@@ -16,6 +26,8 @@ jobs:
       - uses: astral-sh/setup-uv@v4
       - name: Run server sync tests
         run: python3 -m unittest discover -s server -p "test_sync*.py"
+      - name: Run CI module tests
+        run: python3 -m unittest discover -s ci/tests -p "test_*.py" -v
       - name: Run modsync_api tests
         working-directory: modsync_api
         run: |
@@ -27,79 +39,30 @@ jobs:
           uv sync --group dev
           uv run pytest -v
 
-  client-e2e:
+  resolve-e2e:
     needs: [test]
-    if: github.event_name == 'pull_request'
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      run_e2e: ${{ steps.decision.outputs.run_e2e }}
+      app_version: ${{ steps.decision.outputs.app_version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - name: Exclude workspace and temp paths from Windows Defender
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          $paths = @(
-            "${{ github.workspace }}",
-            $env:TEMP,
-            $env:TMP,
-            (Join-Path $env:LOCALAPPDATA "Programs\ModSync")
-          ) | Where-Object { $_ } | Select-Object -Unique
-          foreach ($path in $paths) {
-            try {
-              Add-MpPreference -ExclusionPath $path -ErrorAction Stop
-            } catch {
-              Write-Warning "Could not add Defender exclusion for ${path}: $_"
-            }
-          }
-      - name: Install Linux Tkinter and X11 E2E dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-tk xvfb xdotool openbox
-      - name: Install client dependencies
-        working-directory: client
-        run: uv sync --group dev
-      - name: Run client tests (Windows)
-        if: matrix.os == 'windows-latest'
-        working-directory: client
-        run: uv run --no-sync pytest -v
-      - name: Build standalone binary with PyInstaller
-        working-directory: client
-        run: uv run --no-sync pyinstaller modsync.spec --clean --noconfirm
-      - name: Build Windows Installer (Inno Setup)
-        if: matrix.os == 'windows-latest'
-        working-directory: client
-        shell: pwsh
-        run: |
-          $iscc = Get-Command iscc -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
-          if (-not $iscc) {
-            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          }
-          if (-not (Test-Path $iscc)) {
-            choco install innosetup -y
-            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          }
-          & $iscc installer.iss
-      - name: Rename Linux binary
-        if: matrix.os == 'ubuntu-latest'
-        run: mv client/dist/ModSync client/dist/ModSync-linux
-      - name: Install client-e2e dependencies
-        working-directory: client-e2e
-        run: uv sync
-      - name: Run client E2E tests (Windows)
-        if: matrix.os == 'windows-latest'
-        working-directory: client-e2e
+        with:
+          fetch-depth: 0
+      - name: Resolve whether client E2E must run
+        id: decision
         env:
-          MODSYNC_INSTALLER: ${{ github.workspace }}/client/dist/ModSync-Setup.exe
-        run: uv run --no-sync pytest -v
-      - name: Run client E2E tests (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        working-directory: client-e2e
-        env:
-          MODSYNC_BIN: ${{ github.workspace }}/client/dist/ModSync-linux
-        run: uv run --no-sync pytest -v
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 -m ci resolve-e2e
+
+  client-e2e:
+    needs: [resolve-e2e]
+    if: needs.resolve-e2e.outputs.run_e2e == 'true'
+    uses: ./.github/workflows/build-client.yml
+    with:
+      app_version: ${{ needs.resolve-e2e.outputs.app_version }}
+      source_repo: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      head_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      event_name: ${{ github.event_name }}
+      retention_days: 7
