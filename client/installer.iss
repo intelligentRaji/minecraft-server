@@ -32,7 +32,7 @@ Name: "{group}\Uninstall ModSync"; Filename: "{uninstallexe}"
 Root: HKCU; Subkey: "Software\Classes\modsync"; ValueType: string; ValueData: "URL:ModSync Invite Protocol"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\modsync"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\modsync\shell\open\command"; ValueType: string; ValueData: """{app}\ModSync.exe"" ""%1"""
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "ModSync"; ValueData: """{app}\ModSync.exe"""; Tasks: autostart; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "ModSync"; ValueData: """{app}\ModSync.exe"""; Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\ModSync.exe"; Description: "Launch ModSync"; Flags: nowait postinstall skipifsilent

@@ -75,12 +75,6 @@ def test_windows_uninstaller_blocks_while_modsync_is_running(
     process_spawner: ProcessSpawner,
 ) -> None:
     """Verify uninstaller refuses to remove ModSync while the installed ModSync.exe is running."""
-    installed_modsync.seed_leftover_artifacts(
-        BinaryPayloads.LEFTOVER_OLD_BINARY,
-        BinaryPayloads.LEFTOVER_NEW_BINARY,
-        include_startup_script=True,
-    )
-
     running_proc = process_spawner(
         [
             installed_modsync.installed_exe,
@@ -109,6 +103,13 @@ def test_windows_uninstaller_blocks_while_modsync_is_running(
             _connected,
             timeout=TIMEOUT_SYNC,
             description="installed ModSync.exe connected to modsync_api",
+        )
+
+        # Seed leftovers after ModSync.exe startup so cleanup_old_binary() doesn't delete .old itself.
+        installed_modsync.seed_leftover_artifacts(
+            BinaryPayloads.LEFTOVER_OLD_BINARY,
+            BinaryPayloads.LEFTOVER_NEW_BINARY,
+            include_startup_script=True,
         )
 
         blocked_rc = installed_modsync.uninstall_silent()
