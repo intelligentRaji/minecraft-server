@@ -8,6 +8,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,6 +20,8 @@ jobs:
       - uses: astral-sh/setup-uv@v4
       - name: Run server sync tests
         run: python3 -m unittest discover -s server -p "test_sync*.py"
+      - name: Run CI release helper tests
+        run: python3 -m unittest discover -s .github/scripts -p "test_*.py"
       - name: Run modsync_api tests
         working-directory: modsync_api
         run: |
@@ -27,23 +33,69 @@ jobs:
           uv sync --group dev
           uv run pytest -v
 
-  client-e2e:
+  resolve-e2e:
     needs: [test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    outputs:
+      run_e2e: ${{ steps.decision.outputs.run_e2e }}
+      app_version: ${{ steps.decision.outputs.app_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Decide whether E2E must run
+        id: decision
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/release_reuse.py resolve-e2e \
+            --event "${{ github.event_name }}" \
+            --head-sha "${{ github.event.pull_request.head.sha }}" \
+            --head-repo "${{ github.event.pull_request.head.repo.full_name }}" \
+            --base-repo "${{ github.repository }}" \
+            --github-output "$GITHUB_OUTPUT"
+
+  client-e2e:
+    needs: [resolve-e2e]
+    if: needs.resolve-e2e.outputs.run_e2e == 'true'
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: windows-latest
+            artifact: ModSync-windows
+            upload-path: |
+              client/dist/ModSync.exe
+              client/dist/ModSync-Setup.exe
+          - os: ubuntu-latest
+            artifact: ModSync-linux
+            upload-path: client/dist/ModSync-linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
+      - name: Set up MSVC environment for Windows PyInstaller bootloader build
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Sync client __version__ with pyproject.toml
+        shell: bash
+        run: |
+          python3 -c 'from pathlib import Path; p = Path("client/src/modsync_client/__init__.py"); p.write_text("\"\"\"ModSync background client package.\"\"\"\n\n__version__ = \"${{ needs.resolve-e2e.outputs.app_version }}\"\n", encoding="utf-8")'
+      - name: Install client dependencies (Windows, source-built PyInstaller bootloader)
+        if: matrix.os == 'windows-latest'
+        working-directory: client
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: "1"
+        run: uv sync --group dev --no-binary-package pyinstaller
       - name: Install Linux Tkinter and X11 E2E dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-tk xvfb xdotool openbox
-      - name: Install client dependencies
+      - name: Install client dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
         working-directory: client
         run: uv sync --group dev
       - name: Run client tests (Windows)
@@ -66,7 +118,7 @@ jobs:
             choco install innosetup -y
             $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           }
-          & $iscc installer.iss
+          & $iscc "/DMyAppVersion=${{ needs.resolve-e2e.outputs.app_version }}" installer.iss
       - name: Rename Linux binary
         if: matrix.os == 'ubuntu-latest'
         run: mv client/dist/ModSync client/dist/ModSync-linux
@@ -85,3 +137,24 @@ jobs:
         env:
           MODSYNC_BIN: ${{ github.workspace }}/client/dist/ModSync-linux
         run: uv run --no-sync pytest -v
+      - name: Upload verified build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.upload-path }}
+          retention-days: 3
+      - name: Write build verification metadata
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python3 .github/scripts/release_reuse.py write-meta \
+            --output client/dist/build-meta.json \
+            --source-repo "${{ github.event.pull_request.head.repo.full_name || github.repository }}" \
+            --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --event "${{ github.event_name }}"
+      - name: Upload build verification metadata
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-meta
+          path: client/dist/build-meta.json
+          retention-days: 3
