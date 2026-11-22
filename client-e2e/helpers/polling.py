@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -10,7 +11,7 @@ from typing import Any, TypeVar
 
 import psutil
 
-DEFAULT_POLL_TIMEOUT_SECONDS = 15.0
+DEFAULT_POLL_TIMEOUT_SECONDS = 30.0
 DEFAULT_POLL_INTERVAL_SECONDS = 0.1
 DEFAULT_TERMINATE_TIMEOUT_SECONDS = 5.0
 KILL_WAIT_TIMEOUT_SECONDS = 10.0
@@ -20,6 +21,23 @@ T = TypeVar("T")
 
 class FatalPollError(Exception):
     """Raised by a wait_until predicate to abort polling immediately."""
+
+
+class ProcessTreeTimeoutExpired(subprocess.TimeoutExpired):
+    """TimeoutExpired subclass that formats any partial stdout/stderr captured before kill."""
+
+    def __str__(self) -> str:
+        base = super().__str__()
+        details: list[str] = []
+        if self.output:
+            text = self.output.decode("utf-8", errors="replace") if isinstance(self.output, bytes) else str(self.output)
+            if text.strip():
+                details.append(f"stdout={text.strip()!r}")
+        if self.stderr:
+            text = self.stderr.decode("utf-8", errors="replace") if isinstance(self.stderr, bytes) else str(self.stderr)
+            if text.strip():
+                details.append(f"stderr={text.strip()!r}")
+        return f"{base} ({', '.join(details)})" if details else base
 
 
 def wait_until(
@@ -117,35 +135,43 @@ def run_with_tree_timeout(
     cwd: Path | str | None = None,
     env: dict[str, str] | None = None,
     stdin_input: str | None = None,
-    timeout: float = 30.0,
+    timeout: float = 45.0,
 ) -> subprocess.CompletedProcess[str]:
     """Run a command and kill its full process tree on timeout to avoid child-pipe deadlocks."""
     cmd = [str(a) for a in args]
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(cwd) if cwd is not None else None,
-        env=env,
-        stdin=subprocess.PIPE if stdin_input is not None else subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    try:
-        stdout, stderr = proc.communicate(input=stdin_input, timeout=timeout)
-    except subprocess.TimeoutExpired as exc:
-        terminate_process_tree(proc)
-        raise subprocess.TimeoutExpired(
-            cmd=cmd,
-            timeout=timeout,
-            output=exc.output,
-            stderr=exc.stderr,
-        ) from exc
-    except BaseException:
-        terminate_process_tree(proc)
-        raise
-    return subprocess.CompletedProcess(
-        args=cmd,
-        returncode=proc.returncode if proc.returncode is not None else 0,
-        stdout=stdout or "",
-        stderr=stderr or "",
-    )
+    with (
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stdout_file,
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stderr_file,
+    ):
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(cwd) if cwd is not None else None,
+            env=env,
+            stdin=subprocess.PIPE if stdin_input is not None else subprocess.DEVNULL,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+        )
+        try:
+            proc.communicate(input=stdin_input, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            terminate_process_tree(proc)
+            stdout_file.seek(0)
+            stderr_file.seek(0)
+            raise ProcessTreeTimeoutExpired(
+                cmd=cmd,
+                timeout=timeout,
+                output=stdout_file.read(),
+                stderr=stderr_file.read(),
+            ) from exc
+        except BaseException:
+            terminate_process_tree(proc)
+            raise
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=proc.returncode if proc.returncode is not None else 0,
+            stdout=stdout_file.read(),
+            stderr=stderr_file.read(),
+        )
