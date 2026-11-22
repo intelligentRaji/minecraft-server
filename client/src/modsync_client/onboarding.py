@@ -131,6 +131,7 @@ def prompt_config_gui(
     _last_gui_unavailable = False
     root.withdraw()
     root.attributes("-topmost", True)
+    root.update_idletasks()
     try:
         normalized_preset = preset_url.strip().rstrip("/")
         parsed_token: str | None = None

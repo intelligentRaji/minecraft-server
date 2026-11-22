@@ -54,6 +54,9 @@ def install_fake_tk(
             def attributes(self, *_args: object) -> None:
                 pass
 
+            def update_idletasks(self) -> None:
+                pass
+
             def destroy(self) -> None:
                 pass
 

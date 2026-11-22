@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from .polling import get_process_tree_pids, terminate_process_tree, wait_until
+from .polling import FatalPollError, get_process_tree_pids, terminate_process_tree, wait_until
 
 ENV_CI = "CI"
 CI_TRUTHY_VALUES = frozenset({"1", "true", "yes"})
@@ -100,6 +100,32 @@ class X11DialogDriver(BaseDialogDriver):
     xvfb_process: subprocess.Popen[str] | None = field(default=None, init=False)
     wm_process: subprocess.Popen[str] | None = field(default=None, init=False)
 
+    def _wait_x_server_ready(
+        self,
+        display_name: str,
+        xvfb_proc: subprocess.Popen[str],
+        *,
+        timeout: float = 5.0,
+    ) -> None:
+        from Xlib import display as xdisplay
+
+        def _connected() -> bool:
+            if xvfb_proc.poll() is not None:
+                raise FatalPollError(f"Xvfb exited early with code {xvfb_proc.returncode}")
+            try:
+                dpy = xdisplay.Display(display_name)
+            except Exception:
+                return False
+            dpy.close()
+            return True
+
+        wait_until(
+            _connected,
+            timeout=timeout,
+            interval=POLL_INTERVAL_FAST,
+            description=f"X11 display {display_name} to accept connections",
+        )
+
     def _start_window_manager_if_available(self) -> None:
         wm_path = shutil.which("openbox")
         if not wm_path:
@@ -112,11 +138,30 @@ class X11DialogDriver(BaseDialogDriver):
             stderr=subprocess.DEVNULL,
             text=True,
         )
-        time.sleep(DISPLAY_STARTUP_DELAY)
-        if proc.poll() is None:
+        from Xlib import X, display as xdisplay
+
+        def _wm_ready() -> bool:
+            if proc.poll() is not None:
+                raise FatalPollError(f"openbox exited early with code {proc.returncode}")
+            dpy = xdisplay.Display(self.display)
+            try:
+                atom = dpy.intern_atom("_NET_SUPPORTING_WM_CHECK")
+                prop = dpy.screen().root.get_full_property(atom, X.AnyPropertyType)
+                return prop is not None and bool(prop.value)
+            finally:
+                dpy.close()
+
+        try:
+            wait_until(
+                _wm_ready,
+                timeout=5.0,
+                interval=POLL_INTERVAL_FAST,
+                description=f"openbox WM ready on {self.display}",
+            )
             self.wm_process = proc
-        else:
+        except BaseException:
             terminate_process_tree(proc, timeout=3.0)
+            raise
 
     def start_if_needed(self) -> None:
         xdotool_path = shutil.which("xdotool")
@@ -153,20 +198,25 @@ class X11DialogDriver(BaseDialogDriver):
                 text=True,
             )
             try:
-                time.sleep(DISPLAY_STARTUP_DELAY)
-                if proc.poll() is None:
-                    self.display = candidate
-                    self.xvfb_process = proc
-                    self._start_window_manager_if_available()
-                    return
+                self._wait_x_server_ready(candidate, proc)
+                self.display = candidate
+                self.xvfb_process = proc
+                break
+            except (FatalPollError, TimeoutError):
                 terminate_process_tree(proc, timeout=3.0)
             except BaseException:
                 terminate_process_tree(proc, timeout=3.0)
                 raise
+        else:
+            raise RuntimeError(
+                f"Failed to start Xvfb on any display between :{XVFB_DISPLAY_MIN} and :{XVFB_DISPLAY_MAX - 1}"
+            )
 
-        raise RuntimeError(
-            f"Failed to start Xvfb on any display between :{XVFB_DISPLAY_MIN} and :{XVFB_DISPLAY_MAX - 1}"
-        )
+        try:
+            self._start_window_manager_if_available()
+        except BaseException:
+            self.close()
+            raise
 
     def prepare_env(self, env: dict[str, str]) -> dict[str, str]:
         updated = dict(env)
