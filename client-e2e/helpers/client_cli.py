@@ -19,6 +19,7 @@ FLAG_SYNC_ONCE = "--sync-once"
 FLAG_INSTALL_RECOMMENDED = "--install-recommended"
 FLAG_SETUP = "--setup"
 FLAG_UPDATE = "--update"
+FLAG_RELAUNCH = "--relaunch"
 FLAG_SERVER_URL = "--server-url"
 FLAG_MODS_DIR = "--mods-dir"
 FLAG_TOKEN = "--token"
@@ -130,6 +131,19 @@ class ModSyncCli:
         cfg = config_path if config_path is not None else self.isolated_env.config_path
         return self._run([FLAG_INSTALL_RECOMMENDED, FLAG_CONFIG, cfg], timeout=timeout)
 
+    def _build_env(
+        self,
+        *,
+        env_overrides: dict[str, str] | None = None,
+        github_api_url: str | None = None,
+    ) -> dict[str, str]:
+        env = dict(self.isolated_env.env)
+        if env_overrides:
+            env.update(env_overrides)
+        if github_api_url is not None:
+            env[ENV_MODSYNC_GITHUB_API_URL] = github_api_url
+        return env
+
     def update(
         self,
         *,
@@ -138,9 +152,35 @@ class ModSyncCli:
         timeout: float = TIMEOUT_CLI,
     ) -> subprocess.CompletedProcess[str]:
         """Run `ModSync --update` pointed at a local fake GitHub API base URL."""
-        env = dict(self.isolated_env.env)
-        env[ENV_MODSYNC_GITHUB_API_URL] = github_api_url
-        return self._run([FLAG_UPDATE], binary=binary, env=env, timeout=timeout)
+        return self._run(
+            [FLAG_UPDATE],
+            binary=binary,
+            env=self._build_env(github_api_url=github_api_url),
+            timeout=timeout,
+        )
+
+    def update_and_relaunch(
+        self,
+        *,
+        github_api_url: str,
+        binary: Path,
+        stderr_log: Path,
+        env_overrides: dict[str, str] | None = None,
+        timeout: float = TIMEOUT_CLI,
+    ) -> int:
+        """Run `ModSync --update --relaunch` without blocking on detached child pipes."""
+        env = self._build_env(env_overrides=env_overrides, github_api_url=github_api_url)
+        with stderr_log.open("w", encoding="utf-8") as err_handle:
+            proc = subprocess.Popen(
+                [str(binary), FLAG_UPDATE, FLAG_RELAUNCH],
+                cwd=str(self.cwd),
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=err_handle,
+                text=True,
+            )
+            return proc.wait(timeout=timeout)
 
     def setup_cli(
         self,
@@ -199,10 +239,7 @@ class ModSyncCli:
         """Spawn ModSync in tray mode (no --headless, no --sync-once) via the test spawner."""
         target_mods = mods_dir if mods_dir is not None else self.isolated_env.mods_dir
         cfg = config_path if config_path is not None else self.isolated_env.config_path
-        env = dict(self.isolated_env.env)
-        if env_overrides:
-            env.update(env_overrides)
-        env[ENV_MODSYNC_GITHUB_API_URL] = github_api_url
+        env = self._build_env(env_overrides=env_overrides, github_api_url=github_api_url)
         return self.spawner(
             [
                 self.binary,
