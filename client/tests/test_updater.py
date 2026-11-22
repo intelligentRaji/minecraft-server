@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import stat
 import subprocess
 import sys
@@ -12,6 +13,7 @@ from typing import Any
 import httpx
 import pytest
 
+import modsync_client.updater as updater
 from modsync_client.updater import (
     DEFAULT_GITHUB_API_URL,
     DEFAULT_GITHUB_REPO,
@@ -242,6 +244,7 @@ def test_download_and_apply_update_win32_replaces_and_creates_old_backup(
 
 def test_download_and_apply_update_linux_replaces_with_executable_permissions(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     target = tmp_path / "ModSync-linux"
     target.write_bytes(b"old-linux")
@@ -255,13 +258,25 @@ def test_download_and_apply_update_linux_replaces_with_executable_permissions(
         expected_sha256=hashlib.sha256(new_bytes).hexdigest(),
     )
 
+    chmod_calls: list[tuple[Path, int]] = []
+    real_chmod = os.chmod
+
+    def spy_chmod(path: Path | str, mode: int) -> None:
+        chmod_calls.append((Path(path), mode))
+        real_chmod(path, mode)
+
+    monkeypatch.setattr(updater.os, "chmod", spy_chmod)
+
     with httpx.Client(
         transport=httpx.MockTransport(lambda _r: httpx.Response(200, content=new_bytes))
     ) as client:
         download_and_apply_update(update, executable_path=target, platform="linux", client=client)
 
+    expected_mode = 0o755
     assert target.read_bytes() == new_bytes
-    assert stat.S_IMODE(target.stat().st_mode) == 0o755
+    assert chmod_calls == [(tmp_path / ".ModSync-linux.new", expected_mode)]
+    if os.name == "posix":
+        assert stat.S_IMODE(target.stat().st_mode) == expected_mode
     assert not (tmp_path / "ModSync-linux.old").exists()
 
 

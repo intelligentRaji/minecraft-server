@@ -24,6 +24,7 @@ RELEASE_TAG_PREFIX = "client-v"
 CHECKSUMS_ASSET_NAME = "checksums.txt"
 REQUEST_TIMEOUT_SECONDS = 15.0
 DOWNLOAD_TIMEOUT_SECONDS = 120.0
+EXECUTABLE_MODE = 0o755
 _SHA256_LINE_RE = re.compile(r"^([0-9a-fA-F]{64})\s+\*?(.+?)\s*$")
 
 
@@ -245,7 +246,7 @@ def download_and_apply_update(
                 os.replace(target, old_path)
             os.replace(tmp_path, target)
         else:
-            os.chmod(tmp_path, 0o755)
+            os.chmod(tmp_path, EXECUTABLE_MODE)
             os.replace(tmp_path, target)
         return target
     except Exception:

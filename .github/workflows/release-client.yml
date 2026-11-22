@@ -46,7 +46,7 @@ jobs:
             if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
               should_release="${{ inputs.publish_release }}"
             elif git rev-parse -q --verify "refs/tags/${tag_name}" >/dev/null; then
-              echo "Tag ${tag_name} already exists; running build/test without creating a release."
+              echo "Tag ${tag_name} already exists; skipping release build."
               should_release="false"
             else
               echo "New version ${app_version} detected on main; will publish ${tag_name}."
@@ -58,6 +58,8 @@ jobs:
           echo "should_release=${should_release}" >> "$GITHUB_OUTPUT"
 
   test-server-manifest:
+    needs: [prepare-release]
+    if: needs.prepare-release.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +72,9 @@ jobs:
 
   build-client:
     needs: [prepare-release, test-server-manifest]
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -102,7 +106,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk xvfb xdotool
+          sudo apt-get install -y python3-tk xvfb xdotool openbox
       - name: Install client dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
         working-directory: client
