@@ -1,4 +1,4 @@
-.PHONY: help up down restart reload logs modsync-logs status sync-dry lp-snapshot test client-build client-e2e invite-link progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
+.PHONY: help up down restart reload logs modsync-logs status sync-dry lp-snapshot test client-build client-e2e invite-link chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
 
 COMPOSE := docker compose
 LP_SNAPSHOT := python3 .agents/plugins/minecraft-manager/skills/minecraft-permission-manager/scripts/lp_snapshot.py
@@ -58,8 +58,6 @@ invite-link: ## Print modsync:// invite link from .env (MODSYNC_SERVER_URL + MOD
 	if [ -z "$$url" ] && [ -f .env ]; then url="$$(grep -E '^MODSYNC_SERVER_URL=' .env | head -n1 | cut -d= -f2-)"; fi; \
 	if [ -z "$$token" ] && [ -f .env ]; then token="$$(grep -E '^MODSYNC_CLIENT_TOKEN=' .env | head -n1 | cut -d= -f2-)"; fi; \
 	PYTHONPATH=client/src python3 -c "from modsync_client.config import build_invite_url; import sys; print(build_invite_url(sys.argv[1] or 'http://localhost:8080', sys.argv[2]))" "$$url" "$$token"
-
-progress: chunky-progress ## Alias for chunky-progress
 
 chunky-progress: ## Display Chunky pre-generation progress
 	$(COMPOSE) exec mc rcon-cli chunky progress

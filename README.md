@@ -34,7 +34,7 @@ You can manage the server using `make` commands or direct `docker compose` comma
 | `make sync-dry` | Preview server mod synchronization without touching files |
 | `make test` | Run unit tests across server config runner, `modsync_api`, and `client` |
 | `make client-build` | Build standalone client executable via PyInstaller |
-| `make progress` | Display Chunky pre-generation progress (alias for `make chunky-progress`) |
+| `make chunky-progress` | Display Chunky pre-generation progress |
 | `make chunky-start` | Start Chunky pre-generation task |
 | `make chunky-pause` | Pause Chunky pre-generation task and save progress |
 | `make chunky-continue` | Continue paused Chunky pre-generation task |
