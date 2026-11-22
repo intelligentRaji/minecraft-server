@@ -1,7 +1,6 @@
-.PHONY: help up down restart reload logs modsync-logs status sync-dry backup lp-snapshot test client-build client-e2e invite-link progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
+.PHONY: help up down restart reload logs modsync-logs status sync-dry lp-snapshot test client-build client-e2e invite-link progress chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
 
 COMPOSE := docker compose
-SYNC_DRIVE := python3 .agents/plugins/minecraft-manager/skills/minecraft-gdrive-sync/scripts/sync_mods_drive.py
 LP_SNAPSHOT := python3 .agents/plugins/minecraft-manager/skills/minecraft-permission-manager/scripts/lp_snapshot.py
 RCON_CLI := python3 .agents/plugins/minecraft-manager/skills/minecraft-rcon/scripts/rcon.py
 
@@ -37,9 +36,6 @@ status: ## Show container status
 
 sync-dry: ## Preview server mod synchronization without modifying files
 	python3 server/sync_mods.py --dry-run --skip-api
-
-backup: ## Upload current modpack to Google Drive under minecraft-server/mods/
-	$(SYNC_DRIVE)
 
 lp-snapshot: ## Export LuckPerms snapshot via RCON to server/mods/luckperms/configs/
 	$(LP_SNAPSHOT) --clean

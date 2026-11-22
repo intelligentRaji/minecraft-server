@@ -32,7 +32,6 @@ You can manage the server using `make` commands or direct `docker compose` comma
 | `make modsync-logs` | Follow `modsync-api` WebSocket/HTTP logs |
 | `make status` | View container status |
 | `make sync-dry` | Preview server mod synchronization without touching files |
-| `make backup` | Upload current modpack to Google Drive |
 | `make test` | Run unit tests across server config runner, `modsync_api`, and `client` |
 | `make client-build` | Build standalone client executable via PyInstaller |
 | `make progress` | Display Chunky pre-generation progress (alias for `make chunky-progress`) |

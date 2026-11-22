@@ -19,8 +19,10 @@ To upload all missing local mods and automatically prune any stale/deleted mods 
 python3 .agents/plugins/minecraft-manager/skills/minecraft-gdrive-sync/scripts/sync_mods_drive.py --dry-run
 
 # Execute full two-way synchronization:
-make backup
+python3 .agents/plugins/minecraft-manager/skills/minecraft-gdrive-sync/scripts/sync_mods_drive.py
 ```
+
+*(Note: `sync_mods_drive.py` checks filenames only. When replacing a mod patched in-place with the same filename, run Step 3 to trash the old remote jar before running `sync_mods_drive.py`.)*
 
 ---
 
