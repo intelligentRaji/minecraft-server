@@ -392,11 +392,30 @@ def test_relaunch_executable_posix(
     target = tmp_path / "ModSync-linux"
     calls: list[tuple[list[str], dict[str, Any]]] = []
     monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", str(tmp_path / "_MEIold"))
+    monkeypatch.setenv("_PYI_ARCHIVE_FILE", str(target))
+    monkeypatch.setenv("_PYI_PARENT_PROCESS_LEVEL", "1")
+    monkeypatch.setenv("_MEIPASS2", str(tmp_path / "_MEIold"))
+    monkeypatch.setenv("KEEP_ME", "value")
     monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: calls.append((cmd, kw)))
 
     relaunch_executable(target)
 
-    assert calls == [([str(target)], {"close_fds": True})]
+    assert len(calls) == 1
+    cmd, kw = calls[0]
+    assert cmd == [str(target)]
+    assert kw["close_fds"] is True
+    assert "creationflags" not in kw
+    env = kw["env"]
+    assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+    assert env["KEEP_ME"] == "value"
+    for key in (
+        "_PYI_APPLICATION_HOME_DIR",
+        "_PYI_ARCHIVE_FILE",
+        "_PYI_PARENT_PROCESS_LEVEL",
+        "_MEIPASS2",
+    ):
+        assert key not in env
 
 
 def test_relaunch_executable_win32(
@@ -404,17 +423,27 @@ def test_relaunch_executable_win32(
     tmp_path: Path,
 ) -> None:
     target = tmp_path / "ModSync.exe"
+    meipass_dir = tmp_path / "_MEIold"
+    external_tcl = tmp_path / "external_tcl"
     calls: list[tuple[list[str], dict[str, Any]]] = []
     monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "_MEIPASS", str(meipass_dir), raising=False)
+    monkeypatch.setenv("TCL_LIBRARY", str(meipass_dir / "_tcl_data"))
+    monkeypatch.setenv("TK_LIBRARY", str(external_tcl))
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", str(meipass_dir))
     monkeypatch.setattr(subprocess, "DETACHED_PROCESS", 0x00000008, raising=False)
     monkeypatch.setattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False)
     monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: calls.append((cmd, kw)))
 
     relaunch_executable(target)
 
-    assert calls == [
-        (
-            [str(target)],
-            {"close_fds": True, "creationflags": 0x00000008 | 0x00000200},
-        )
-    ]
+    assert len(calls) == 1
+    cmd, kw = calls[0]
+    assert cmd == [str(target)]
+    assert kw["close_fds"] is True
+    assert kw["creationflags"] == 0x00000008 | 0x00000200
+    env = kw["env"]
+    assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+    assert "_PYI_APPLICATION_HOME_DIR" not in env
+    assert "TCL_LIBRARY" not in env
+    assert env["TK_LIBRARY"] == str(external_tcl)

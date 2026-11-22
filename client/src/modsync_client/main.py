@@ -16,6 +16,7 @@ from modsync_client.updater import (
     check_for_update,
     cleanup_old_binary,
     download_and_apply_update,
+    relaunch_executable,
 )
 from modsync_client.ws_client import ModSyncService
 
@@ -55,6 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Check for a newer ModSync release, install it, and exit",
     )
+    parser.add_argument(
+        "--relaunch",
+        action="store_true",
+        help="Relaunch ModSync in the background after applying an update with --update",
+    )
     parser.add_argument("--server-url", help="Override ModSync server URL")
     parser.add_argument("--mods-dir", type=Path, help="Override Minecraft mods directory")
     parser.add_argument("--token", default=None, help="Optional client auth token")
@@ -87,7 +93,7 @@ def _run_one_shot(config: Config, *, install_recommended: bool) -> int:
         syncer.close()
 
 
-def _run_update() -> int:
+def _run_update(*, relaunch: bool = False) -> int:
     """Check GitHub Releases for a newer standalone ModSync binary and apply it in place."""
     try:
         update = check_for_update(__version__)
@@ -114,6 +120,8 @@ def _run_update() -> int:
         return 1
 
     print(f"Updated ModSync from v{__version__} to v{update.version}.")
+    if relaunch:
+        relaunch_executable()
     return 0
 
 
@@ -138,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.update:
-        return _run_update()
+        return _run_update(relaunch=args.relaunch)
 
     config = resolve_or_setup_config(args)
 

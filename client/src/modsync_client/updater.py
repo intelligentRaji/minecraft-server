@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,14 @@ REQUEST_TIMEOUT_SECONDS = 15.0
 DOWNLOAD_TIMEOUT_SECONDS = 120.0
 EXECUTABLE_MODE = 0o755
 _SHA256_LINE_RE = re.compile(r"^([0-9a-fA-F]{64})\s+\*?(.+?)\s*$")
+_PYI_CHILD_ENV_VARS = (
+    "_PYI_APPLICATION_HOME_DIR",
+    "_PYI_ARCHIVE_FILE",
+    "_PYI_PARENT_PROCESS_LEVEL",
+    "_PYI_SPLASH_IPC",
+    "_PYI_LINUX_PROCESS_NAME",
+    "_MEIPASS2",
+)
 
 
 @dataclass(frozen=True)
@@ -257,10 +266,35 @@ def download_and_apply_update(
             http.close()
 
 
+def _build_relaunch_env(base_env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Build a clean environment so a relaunched PyInstaller binary boots as a fresh instance."""
+    env = dict(os.environ if base_env is None else base_env)
+    for key in _PYI_CHILD_ENV_VARS:
+        env.pop(key, None)
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        meipass_path = Path(str(meipass)).resolve()
+        for key in ("TCL_LIBRARY", "TK_LIBRARY"):
+            val = env.get(key)
+            if not val:
+                continue
+            try:
+                if Path(val).resolve().is_relative_to(meipass_path):
+                    env.pop(key, None)
+            except OSError:
+                pass
+    # PyInstaller 6.9+ inherits onefile worker state unless reset is explicitly requested.
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
 def relaunch_executable(executable_path: Path | None = None) -> None:
     """Start the newly updated executable in a detached process."""
     target = executable_path or Path(sys.executable).resolve()
-    kwargs: dict[str, Any] = {"close_fds": True}
+    kwargs: dict[str, Any] = {
+        "close_fds": True,
+        "env": _build_relaunch_env(),
+    }
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     subprocess.Popen([str(target)], **kwargs)

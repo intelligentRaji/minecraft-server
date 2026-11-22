@@ -102,16 +102,43 @@ def test_cli_update_applies_update_when_frozen(
 ) -> None:
     update = _sample_update()
     applied: list[UpdateInfo] = []
+    relaunched: list[bool] = []
 
     monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
     monkeypatch.setattr(cli_main, "check_for_update", lambda _ver: update)
     monkeypatch.setattr(cli_main, "download_and_apply_update", applied.append)
+    monkeypatch.setattr(cli_main, "relaunch_executable", lambda: relaunched.append(True))
     monkeypatch.setattr(sys, "frozen", True, raising=False)
 
     rc = cli_main.main(["--update"])
 
     assert rc == 0
     assert applied == [update]
+    assert relaunched == []
+    assert "9.9.9" in capsys.readouterr().out
+
+
+def test_cli_update_with_relaunch_calls_relaunch_executable(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    update = _sample_update()
+    events: list[object] = []
+
+    monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
+    monkeypatch.setattr(cli_main, "check_for_update", lambda _ver: update)
+    monkeypatch.setattr(
+        cli_main,
+        "download_and_apply_update",
+        lambda upd: events.append(("apply", upd)),
+    )
+    monkeypatch.setattr(cli_main, "relaunch_executable", lambda: events.append("relaunch"))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+
+    rc = cli_main.main(["--update", "--relaunch"])
+
+    assert rc == 0
+    assert events == [("apply", update), "relaunch"]
     assert "9.9.9" in capsys.readouterr().out
 
 

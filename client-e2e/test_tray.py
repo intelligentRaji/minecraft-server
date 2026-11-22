@@ -1,16 +1,109 @@
-"""E2E smoke test verifying ModSync boots in system-tray mode and applies live WebSocket updates."""
+"""E2E smoke test verifying ModSync boots in system-tray mode, self-updates/relaunches, and applies live WS updates."""
 
 from __future__ import annotations
 
+import json
+import os
+import shutil
+from pathlib import Path
 from typing import Any
 
+import psutil
 from helpers.api_server import ModSyncTestServer
-from helpers.client_cli import TIMEOUT_SYNC, ModSyncCli
+from helpers.client_cli import (
+    EXIT_CODE_SUCCESS,
+    TIMEOUT_SYNC,
+    ModSyncCli,
+)
 from helpers.dialog_driver import BaseDialogDriver
 from helpers.env import IsolatedClientEnv
 from helpers.fake_github import DEFAULT_FAKE_RELEASE_VERSION, FakeGitHubReleasesServer
-from helpers.fixtures import BinaryPayloads, DefaultMods, compute_sha256
+from helpers.fixtures import (
+    CFG_KEY_CLIENT_TOKEN,
+    CFG_KEY_MODS_DIR,
+    CFG_KEY_SERVER_URL,
+    BinaryPayloads,
+    DefaultMods,
+    compute_sha256,
+)
 from helpers.polling import FatalPollError, terminate_process_tree, wait_until
+
+
+def _find_processes_by_executable(executable: Path) -> list[psutil.Process]:
+    resolved = os.path.normcase(str(executable.resolve()))
+    matches: list[psutil.Process] = []
+    for proc in psutil.process_iter():
+        try:
+            proc_exe = proc.exe()
+            if proc_exe and os.path.normcase(str(Path(proc_exe).resolve())) == resolved:
+                matches.append(proc)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
+            continue
+    return matches
+
+
+def test_self_update_relaunch_boots_tray_cleanly_without_pyinstaller_env_leak(
+    client_cli: ModSyncCli,
+    dialog_driver: BaseDialogDriver,
+    api_server: ModSyncTestServer,
+    isolated_env: IsolatedClientEnv,
+    tmp_path: Path,
+) -> None:
+    """Self-updating and relaunching a frozen binary must boot tray mode cleanly after parent exit."""
+    target_bin = tmp_path / "relaunch-e2e" / client_cli.platform_asset_name
+    target_bin.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(client_cli.binary, target_bin)
+
+    isolated_env.config_path.parent.mkdir(parents=True, exist_ok=True)
+    isolated_env.config_path.write_text(
+        json.dumps(
+            {
+                CFG_KEY_SERVER_URL: api_server.server_url,
+                CFG_KEY_MODS_DIR: str(isolated_env.mods_dir),
+                CFG_KEY_CLIENT_TOKEN: api_server.client_token,
+            }
+        ),
+        encoding="utf-8",
+    )
+    stderr_log = tmp_path / "relaunch-stderr.log"
+
+    with FakeGitHubReleasesServer(
+        version=DEFAULT_FAKE_RELEASE_VERSION,
+        asset_name=client_cli.platform_asset_name,
+        asset_payload=client_cli.binary.read_bytes(),
+    ) as fake_github:
+        try:
+            rc = client_cli.update_and_relaunch(
+                github_api_url=fake_github.base_url,
+                binary=target_bin,
+                stderr_log=stderr_log,
+                env_overrides=dialog_driver.prepare_env(isolated_env.env),
+            )
+            assert rc == EXIT_CODE_SUCCESS, (
+                f"--update --relaunch failed (rc={rc}): "
+                f"{stderr_log.read_text(encoding='utf-8', errors='replace')!r}"
+            )
+
+            def _relaunched_ready() -> bool:
+                stderr_text = stderr_log.read_text(encoding="utf-8", errors="replace")
+                # Ignore non-fatal pystray Xvfb "Failed to dock icon" AssertionError; fail fast on boot/import crashes.
+                if any(marker in stderr_text for marker in ("ImportError", "ModuleNotFoundError", "[PYI-")):
+                    raise FatalPollError(f"Relaunched ModSync crashed:\n{stderr_text}")
+                running = any(p.is_running() for p in _find_processes_by_executable(target_bin))
+                return running and api_server.connected_clients() >= 1
+
+            try:
+                wait_until(
+                    _relaunched_ready,
+                    timeout=TIMEOUT_SYNC,
+                    description="relaunched tray process to boot and connect WebSocket",
+                )
+            except TimeoutError as exc:
+                stderr_text = stderr_log.read_text(encoding="utf-8", errors="replace")
+                raise TimeoutError(f"{exc}; stderr={stderr_text!r}") from exc
+        finally:
+            for proc in _find_processes_by_executable(target_bin):
+                terminate_process_tree(proc.pid)
 
 
 def test_tray_mode_boots_checks_updates_and_applies_live_ws_update(
