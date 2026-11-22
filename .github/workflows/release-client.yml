@@ -20,46 +20,31 @@ on:
 
 permissions:
   contents: write
+  actions: read
+  pull-requests: read
 
 jobs:
   prepare-release:
     runs-on: ubuntu-latest
     outputs:
-      app_version: ${{ steps.version.outputs.app_version }}
-      tag_name: ${{ steps.version.outputs.tag_name }}
-      should_release: ${{ steps.version.outputs.should_release }}
+      app_version: ${{ steps.plan.outputs.app_version }}
+      tag_name: ${{ steps.plan.outputs.tag_name }}
+      should_release: ${{ steps.plan.outputs.should_release }}
+      artifact_run_id: ${{ steps.plan.outputs.artifact_run_id }}
+      needs_build: ${{ steps.plan.outputs.needs_build }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Resolve version and release decision
-        id: version
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/client-v* ]]; then
-            app_version="${GITHUB_REF_NAME#client-v}"
-            tag_name="${GITHUB_REF_NAME}"
-            should_release="true"
-          else
-            app_version="$(python3 -c 'import tomllib; print(tomllib.load(open("client/pyproject.toml", "rb"))["project"]["version"])')"
-            tag_name="client-v${app_version}"
-            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-              should_release="${{ inputs.publish_release }}"
-            elif git rev-parse -q --verify "refs/tags/${tag_name}" >/dev/null; then
-              echo "Tag ${tag_name} already exists; skipping release build."
-              should_release="false"
-            else
-              echo "New version ${app_version} detected on main; will publish ${tag_name}."
-              should_release="true"
-            fi
-          fi
-          echo "app_version=${app_version}" >> "$GITHUB_OUTPUT"
-          echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
-          echo "should_release=${should_release}" >> "$GITHUB_OUTPUT"
+      - name: Resolve release plan and reusable CI artifacts
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 -m ci prepare-release
 
   test-server-manifest:
     needs: [prepare-release]
-    if: needs.prepare-release.outputs.should_release == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.prepare-release.outputs.needs_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,114 +57,36 @@ jobs:
 
   build-client:
     needs: [prepare-release, test-server-manifest]
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            artifact: ModSync-windows
-            upload-path: |
-              client/dist/ModSync.exe
-              client/dist/ModSync-Setup.exe
-          - os: ubuntu-latest
-            artifact: ModSync-linux
-            upload-path: client/dist/ModSync-linux
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - name: Exclude workspace and temp paths from Windows Defender
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          $paths = @(
-            "${{ github.workspace }}",
-            $env:TEMP,
-            $env:TMP,
-            (Join-Path $env:LOCALAPPDATA "Programs\ModSync")
-          ) | Where-Object { $_ } | Select-Object -Unique
-          foreach ($path in $paths) {
-            try {
-              Add-MpPreference -ExclusionPath $path -ErrorAction Stop
-            } catch {
-              Write-Warning "Could not add Defender exclusion for ${path}: $_"
-            }
-          }
-      - name: Set up MSVC environment for Windows PyInstaller bootloader build
-        if: matrix.os == 'windows-latest'
-        uses: ilammy/msvc-dev-cmd@v1
-      - name: Sync client __version__ with release version
-        shell: bash
-        run: |
-          python3 -c 'from pathlib import Path; p = Path("client/src/modsync_client/__init__.py"); p.write_text("\"\"\"ModSync background client package.\"\"\"\n\n__version__ = \"${{ needs.prepare-release.outputs.app_version }}\"\n", encoding="utf-8")'
-      - name: Install client dependencies (Windows, source-built PyInstaller bootloader)
-        if: matrix.os == 'windows-latest'
-        working-directory: client
-        env:
-          PYINSTALLER_COMPILE_BOOTLOADER: "1"
-        run: uv sync --group dev --no-binary-package pyinstaller
-      - name: Install Linux Tkinter and X11 E2E dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-tk xvfb xdotool openbox
-      - name: Install client dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        working-directory: client
-        run: uv sync --group dev
-      - name: Run client tests
-        working-directory: client
-        run: uv run --no-sync pytest -v
-      - name: Build standalone binary with PyInstaller
-        working-directory: client
-        run: uv run --no-sync pyinstaller modsync.spec --clean --noconfirm
-      - name: Build Windows Installer (Inno Setup)
-        if: matrix.os == 'windows-latest'
-        working-directory: client
-        shell: pwsh
-        run: |
-          $iscc = Get-Command iscc -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
-          if (-not $iscc) {
-            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          }
-          if (-not (Test-Path $iscc)) {
-            choco install innosetup -y
-            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          }
-          & $iscc "/DMyAppVersion=${{ needs.prepare-release.outputs.app_version }}" installer.iss
-      - name: Rename Linux binary
-        if: matrix.os == 'ubuntu-latest'
-        run: mv client/dist/ModSync client/dist/ModSync-linux
-      - name: Install client-e2e dependencies
-        working-directory: client-e2e
-        run: uv sync
-      - name: Run client E2E tests (Windows)
-        if: matrix.os == 'windows-latest'
-        working-directory: client-e2e
-        env:
-          MODSYNC_INSTALLER: ${{ github.workspace }}/client/dist/ModSync-Setup.exe
-        run: uv run --no-sync pytest -v
-      - name: Run client E2E tests (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        working-directory: client-e2e
-        env:
-          MODSYNC_BIN: ${{ github.workspace }}/client/dist/ModSync-linux
-        run: uv run --no-sync pytest -v
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.upload-path }}
+    if: needs.prepare-release.outputs.needs_build == 'true' && needs.test-server-manifest.result == 'success'
+    uses: ./.github/workflows/build-client.yml
+    with:
+      app_version: ${{ needs.prepare-release.outputs.app_version }}
+      retention_days: 7
 
   publish-release:
     needs: [prepare-release, build-client]
-    if: needs.prepare-release.outputs.should_release == 'true'
+    if: >-
+      always() && !cancelled() &&
+      needs.prepare-release.result == 'success' &&
+      needs.prepare-release.outputs.should_release == 'true' &&
+      (needs.prepare-release.outputs.artifact_run_id != '' || needs.build-client.result == 'success')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download verified artifacts from CI Tests run
+        if: needs.prepare-release.outputs.artifact_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.prepare-release.outputs.artifact_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts
+          pattern: ModSync-*
+          merge-multiple: true
+      - name: Download built artifacts from build-client job
+        if: needs.prepare-release.outputs.artifact_run_id == ''
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: ModSync-*
           merge-multiple: true
       - name: Generate SHA-256 checksums
         working-directory: artifacts

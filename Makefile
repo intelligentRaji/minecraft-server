@@ -42,8 +42,9 @@ lp-snapshot: ## Export LuckPerms snapshot via RCON to server/mods/luckperms/conf
 	$(RCON_CLI) "lp export snapshot"
 	$(LP_SNAPSHOT)
 
-test: ## Run server, modsync-api, and client unit tests
+test: ## Run server, CI, modsync-api, and client unit tests
 	python3 -m unittest discover -s server -p "test_sync*.py"
+	python3 -m unittest discover -s ci/tests -p "test_*.py" -v
 	uv --directory modsync_api run pytest -v
 	uv --directory client run pytest -v
 
