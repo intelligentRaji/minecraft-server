@@ -46,6 +46,10 @@ jobs:
       - name: Install client dependencies
         working-directory: client
         run: uv sync --group dev
+      - name: Run client tests (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: client
+        run: uv run --no-sync pytest -v
       - name: Build standalone binary with PyInstaller
         working-directory: client
         run: uv run --no-sync pyinstaller modsync.spec --clean --noconfirm
