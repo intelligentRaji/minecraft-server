@@ -13,7 +13,6 @@ from helpers.api_server import ModSyncTestServer
 from helpers.client_cli import (
     EXIT_CODE_SUCCESS,
     TIMEOUT_SYNC,
-    TRACEBACK_MARKER,
     ModSyncCli,
 )
 from helpers.dialog_driver import BaseDialogDriver
@@ -87,16 +86,21 @@ def test_self_update_relaunch_boots_tray_cleanly_without_pyinstaller_env_leak(
 
             def _relaunched_ready() -> bool:
                 stderr_text = stderr_log.read_text(encoding="utf-8", errors="replace")
-                if TRACEBACK_MARKER in stderr_text:
+                # Ignore non-fatal pystray Xvfb "Failed to dock icon" AssertionError; fail fast on boot/import crashes.
+                if any(marker in stderr_text for marker in ("ImportError", "ModuleNotFoundError", "[PYI-")):
                     raise FatalPollError(f"Relaunched ModSync crashed:\n{stderr_text}")
                 running = any(p.is_running() for p in _find_processes_by_executable(target_bin))
                 return running and api_server.connected_clients() >= 1
 
-            wait_until(
-                _relaunched_ready,
-                timeout=TIMEOUT_SYNC,
-                description="relaunched tray process to boot and connect WebSocket",
-            )
+            try:
+                wait_until(
+                    _relaunched_ready,
+                    timeout=TIMEOUT_SYNC,
+                    description="relaunched tray process to boot and connect WebSocket",
+                )
+            except TimeoutError as exc:
+                stderr_text = stderr_log.read_text(encoding="utf-8", errors="replace")
+                raise TimeoutError(f"{exc}; stderr={stderr_text!r}") from exc
         finally:
             for proc in _find_processes_by_executable(target_bin):
                 terminate_process_tree(proc.pid)
