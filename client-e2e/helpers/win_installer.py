@@ -11,7 +11,12 @@ from pathlib import Path
 
 import psutil
 
-from .polling import get_process_tree_pids, terminate_process_tree, wait_until
+from .polling import (
+    get_process_tree_pids,
+    run_with_tree_timeout,
+    terminate_process_tree,
+    wait_until,
+)
 
 APP_DISPLAY_NAME = "ModSync"
 WIN_APP_EXE_NAME = "ModSync.exe"
@@ -190,10 +195,8 @@ class WindowsInstallerHarness:
             args.append(INNO_AUTOSTART_TASK_FLAG)
         if target_dir is not None:
             args.append(f"{INNO_DIR_FLAG_PREFIX}{target_dir}")
-        return subprocess.run(
+        return run_with_tree_timeout(
             args,
-            capture_output=True,
-            text=True,
             timeout=TIMEOUT_INSTALLER,
         )
 

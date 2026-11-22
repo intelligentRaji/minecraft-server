@@ -79,6 +79,10 @@ def _run_one_shot(config: Config, *, install_recommended: bool) -> int:
         result = syncer.install_recommended() if install_recommended else syncer.sync_once()
         print(result.message)
         return 0 if result.status != SyncStatus.ERROR else 1
+    except Exception as exc:
+        logger.error("Sync failed: %s", exc)
+        print(f"Sync failed: {exc}", file=sys.stderr)
+        return 1
     finally:
         syncer.close()
 

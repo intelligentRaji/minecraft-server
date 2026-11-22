@@ -29,6 +29,7 @@ jobs:
 
   client-e2e:
     needs: [test]
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -41,7 +42,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk xvfb xdotool
+          sudo apt-get install -y python3-tk xvfb xdotool openbox
       - name: Install client dependencies
         working-directory: client
         run: uv sync --group dev

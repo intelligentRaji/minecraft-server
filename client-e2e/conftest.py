@@ -20,7 +20,7 @@ from helpers.client_cli import (
 )
 from helpers.dialog_driver import BaseDialogDriver, create_dialog_driver, is_ci_environment
 from helpers.env import IsolatedClientEnv, ProcessSpawner, build_local_loopback_env
-from helpers.polling import terminate_process_tree, wait_until
+from helpers.polling import run_with_tree_timeout, terminate_process_tree, wait_until
 from helpers.win_installer import (
     INNO_DIR_FLAG_PREFIX,
     INNO_SILENT_FLAGS,
@@ -99,14 +99,12 @@ def modsync_bin(
             bin_copy_dir.mkdir(parents=True, exist_ok=True)
             unins_exe = install_dir / WIN_UNINSTALLER_EXE_NAME
             try:
-                res = subprocess.run(
+                res = run_with_tree_timeout(
                     [
                         str(modsync_installer),
                         *INNO_SILENT_FLAGS,
                         f"{INNO_DIR_FLAG_PREFIX}{install_dir}",
                     ],
-                    capture_output=True,
-                    text=True,
                     timeout=TIMEOUT_INSTALLER,
                 )
                 if res.returncode != EXIT_CODE_SUCCESS:

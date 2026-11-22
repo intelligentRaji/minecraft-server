@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any, TypeVar
 
 import psutil
@@ -108,3 +109,43 @@ def terminate_process_tree(
     finally:
         if isinstance(target, subprocess.Popen):
             _close_popen_pipes_and_wait(target)
+
+
+def run_with_tree_timeout(
+    args: Sequence[str | Path],
+    *,
+    cwd: Path | str | None = None,
+    env: dict[str, str] | None = None,
+    stdin_input: str | None = None,
+    timeout: float = 30.0,
+) -> subprocess.CompletedProcess[str]:
+    """Run a command and kill its full process tree on timeout to avoid child-pipe deadlocks."""
+    cmd = [str(a) for a in args]
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(cwd) if cwd is not None else None,
+        env=env,
+        stdin=subprocess.PIPE if stdin_input is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(input=stdin_input, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        terminate_process_tree(proc)
+        raise subprocess.TimeoutExpired(
+            cmd=cmd,
+            timeout=timeout,
+            output=exc.output,
+            stderr=exc.stderr,
+        ) from exc
+    except BaseException:
+        terminate_process_tree(proc)
+        raise
+    return subprocess.CompletedProcess(
+        args=cmd,
+        returncode=proc.returncode if proc.returncode is not None else 0,
+        stdout=stdout or "",
+        stderr=stderr or "",
+    )

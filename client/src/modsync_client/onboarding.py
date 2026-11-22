@@ -220,7 +220,10 @@ def _apply_invite_uri(args: argparse.Namespace) -> None:
     invite_uri = getattr(args, "invite_uri", None)
     if not invite_uri:
         return
-    invite_url, invite_token = parse_server_input(invite_uri)
+    try:
+        invite_url, invite_token = parse_server_input(invite_uri)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if not args.server_url:
         args.server_url = invite_url
     if args.token is None and invite_token is not None:

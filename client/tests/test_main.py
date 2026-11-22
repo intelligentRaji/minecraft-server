@@ -196,9 +196,10 @@ def test_cli_sync_once_returns_status_exit_code_and_closes_syncer(
     assert "sync finished" in capsys.readouterr().out
 
 
-def test_cli_sync_once_closes_syncer_on_exception(
+def test_cli_sync_once_closes_syncer_and_returns_one_on_exception(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     cfg = Config(server_url="https://mods.example", mods_dir=str(tmp_path / "mods"))
     closed: list[bool] = []
@@ -217,10 +218,30 @@ def test_cli_sync_once_closes_syncer_on_exception(
     monkeypatch.setattr(cli_main, "resolve_or_setup_config", lambda _args: cfg)
     monkeypatch.setattr(cli_main, "ModSyncer", FailingSyncer)
 
-    with pytest.raises(RuntimeError, match="boom"):
-        cli_main.main(["--sync-once"])
+    rc = cli_main.main(["--sync-once"])
 
+    assert rc == 1
+    assert "boom" in capsys.readouterr().err
     assert closed == [True]
+
+
+def test_cli_invalid_invite_uri_exits_cleanly_without_unhandled_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main.main(
+            [
+                "ftp://not-a-valid-invite",
+                "--sync-once",
+                "--config",
+                str(tmp_path / "config.json"),
+            ]
+        )
+
+    assert "Unsupported" in str(exc_info.value) or "Invalid" in str(exc_info.value)
 
 
 def test_cli_install_recommended_runs_recommended_and_closes_syncer(

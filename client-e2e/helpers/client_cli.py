@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .dialog_driver import BaseDialogDriver
 from .env import IsolatedClientEnv, ProcessSpawner
+from .polling import run_with_tree_timeout
 
 FLAG_VERSION = "--version"
 FLAG_HELP = "--help"
@@ -77,14 +78,11 @@ class ModSyncCli:
     ) -> subprocess.CompletedProcess[str]:
         target_bin = binary or self.binary
         cmd = [str(target_bin), *(str(a) for a in args)]
-        return subprocess.run(
+        return run_with_tree_timeout(
             cmd,
-            cwd=str(self.cwd),
+            cwd=self.cwd,
             env=env if env is not None else self.isolated_env.env,
-            input=stdin_input,
-            stdin=None if stdin_input is not None else subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
+            stdin_input=stdin_input,
             timeout=timeout,
         )
 

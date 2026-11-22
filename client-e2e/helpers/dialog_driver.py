@@ -98,6 +98,25 @@ class X11DialogDriver(BaseDialogDriver):
 
     display: str = ""
     xvfb_process: subprocess.Popen[str] | None = field(default=None, init=False)
+    wm_process: subprocess.Popen[str] | None = field(default=None, init=False)
+
+    def _start_window_manager_if_available(self) -> None:
+        wm_path = shutil.which("openbox")
+        if not wm_path:
+            return
+        env = self.prepare_env(os.environ.copy())
+        proc = subprocess.Popen(
+            [wm_path],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        time.sleep(DISPLAY_STARTUP_DELAY)
+        if proc.poll() is None:
+            self.wm_process = proc
+        else:
+            terminate_process_tree(proc, timeout=3.0)
 
     def start_if_needed(self) -> None:
         xdotool_path = shutil.which("xdotool")
@@ -138,6 +157,7 @@ class X11DialogDriver(BaseDialogDriver):
                 if proc.poll() is None:
                     self.display = candidate
                     self.xvfb_process = proc
+                    self._start_window_manager_if_available()
                     return
                 terminate_process_tree(proc, timeout=3.0)
             except BaseException:
@@ -224,18 +244,18 @@ class X11DialogDriver(BaseDialogDriver):
             description=f"dialog {handle} to close",
         )
 
-    def enter_text_and_accept(self, window: DialogWindow, text: str) -> None:
-        wid = str(window.handle)
+    def _focus_window(self, wid: str) -> None:
         self._run_xdotool("windowactivate", "--sync", wid, check=False)
         self._run_xdotool("windowfocus", "--sync", wid, check=False)
         time.sleep(DIALOG_FOCUS_DELAY)
-        # Clear any pre-filled initialvalue ("modsync://") in Tk simpledialog Entry
-        self._run_xdotool("key", "--window", wid, "--clearmodifiers", "ctrl+a", "BackSpace", check=False)
-        self._run_xdotool("key", "--window", wid, "--clearmodifiers", "End", check=False)
+
+    def enter_text_and_accept(self, window: DialogWindow, text: str) -> None:
+        wid = str(window.handle)
+        self._focus_window(wid)
+        # Clear any pre-filled initialvalue ("modsync://") in Tk simpledialog Entry via XTEST.
+        self._run_xdotool("key", "--clearmodifiers", "End", check=False)
         self._run_xdotool(
             "key",
-            "--window",
-            wid,
             "--clearmodifiers",
             *(["BackSpace"] * CLEAR_INPUT_BACKSPACE_COUNT),
             check=False,
@@ -243,8 +263,6 @@ class X11DialogDriver(BaseDialogDriver):
         if text:
             self._run_xdotool(
                 "type",
-                "--window",
-                wid,
                 "--clearmodifiers",
                 "--delay",
                 XDOTOOL_TYPING_DELAY_MS,
@@ -252,25 +270,24 @@ class X11DialogDriver(BaseDialogDriver):
                 text,
             )
         time.sleep(POLL_INTERVAL_FAST)
-        self._run_xdotool("key", "--window", wid, "--clearmodifiers", "Return")
+        self._run_xdotool("key", "--clearmodifiers", "Return")
 
     def accept_dialog(self, window: DialogWindow) -> None:
         wid = str(window.handle)
-        self._run_xdotool("windowactivate", "--sync", wid, check=False)
-        self._run_xdotool("windowfocus", "--sync", wid, check=False)
-        time.sleep(DIALOG_FOCUS_DELAY)
-        self._run_xdotool("key", "--window", wid, "--clearmodifiers", "Return")
+        self._focus_window(wid)
+        self._run_xdotool("key", "--clearmodifiers", "Return")
 
     def cancel_or_close_dialog(self, window: DialogWindow) -> None:
         wid = str(window.handle)
-        self._run_xdotool("windowactivate", "--sync", wid, check=False)
-        self._run_xdotool("windowfocus", "--sync", wid, check=False)
-        time.sleep(DIALOG_FOCUS_DELAY)
-        self._run_xdotool("key", "--window", wid, "--clearmodifiers", "Escape", check=False)
+        self._focus_window(wid)
+        self._run_xdotool("key", "--clearmodifiers", "Escape", check=False)
         time.sleep(DIALOG_CLOSE_DELAY)
         self._run_xdotool("windowclose", wid, check=False)
 
     def close(self) -> None:
+        if self.wm_process is not None:
+            terminate_process_tree(self.wm_process, timeout=3.0)
+            self.wm_process = None
         if self.xvfb_process is not None:
             terminate_process_tree(self.xvfb_process, timeout=3.0)
             self.xvfb_process = None
@@ -298,6 +315,8 @@ KEYEVENTF_UNICODE = 0x0004
 INPUT_KEYBOARD = 1
 GW_OWNER = 4
 SW_RESTORE = 9
+SMTO_ABORTIFHUNG = 0x0002
+SENDMESSAGE_TIMEOUT_MS = 2000
 
 
 class Win32DialogDriver(BaseDialogDriver):
@@ -340,6 +359,16 @@ class Win32DialogDriver(BaseDialogDriver):
             wintypes.LPARAM,
         ]
         self.user32.SendMessageW.restype = wintypes.LPARAM
+        self.user32.SendMessageTimeoutW.argtypes = [
+            wintypes.HWND,
+            ctypes.c_uint,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+            ctypes.c_uint,
+            ctypes.c_uint,
+            ctypes.POINTER(wintypes.WPARAM),
+        ]
+        self.user32.SendMessageTimeoutW.restype = wintypes.LPARAM
         self.user32.SetForegroundWindow.argtypes = [wintypes.HWND]
         self.user32.SetForegroundWindow.restype = wintypes.BOOL
         self.user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
@@ -537,11 +566,24 @@ class Win32DialogDriver(BaseDialogDriver):
         self._tap_vk(VK_RETURN)
 
     def accept_dialog(self, window: DialogWindow) -> None:
+        if sys.platform != "win32":
+            raise RuntimeError("Win32DialogDriver is only supported on Windows")
+        from ctypes import wintypes
+
         hwnd = window.handle
         if window.class_name == WIN32_DIALOG_CLASS:
             ok_btn = self.user32.GetDlgItem(hwnd, IDOK)
             if ok_btn:
-                self.user32.SendMessageW(ok_btn, BM_CLICK, 0, 0)
+                result = wintypes.WPARAM(0)
+                self.user32.SendMessageTimeoutW(
+                    ok_btn,
+                    BM_CLICK,
+                    0,
+                    0,
+                    SMTO_ABORTIFHUNG,
+                    SENDMESSAGE_TIMEOUT_MS,
+                    ctypes.byref(result),
+                )
                 time.sleep(DIALOG_FOCUS_DELAY)
                 if not self.user32.IsWindowVisible(hwnd):
                     return
