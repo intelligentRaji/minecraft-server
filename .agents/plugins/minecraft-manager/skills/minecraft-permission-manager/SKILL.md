@@ -24,7 +24,7 @@ Step-by-step procedure for inspecting, granting, and revoking LuckPerms permissi
 ---
 
 ### Step 2: Apply or Audit Permissions via RCON
-Activate the **`minecraft-rcon`** skill to run the appropriate LuckPerms (`lp`) commands on `mc-forge-server`:
+If targeting a specific player by nickname, resolve their offline UUID first using **`minecraft-role-manager`** (`resolve_player.py <nickname>`). Then activate **`minecraft-rcon`** to run LuckPerms (`lp`) commands on `mc-forge-server`:
 
 - **Grant a permission to a group or user:**
   - `lp group <group> permission set <node> true`
@@ -32,16 +32,13 @@ Activate the **`minecraft-rcon`** skill to run the appropriate LuckPerms (`lp`) 
 - **Deny or remove a permission:**
   - `lp group <group> permission set <node> false` *(explicit deny)*
   - `lp group <group> permission unset <node>` *(remove node)*
-- **Audit current LuckPerms permissions:**
+- **Audit current LuckPerms permissions:** *(Note: `lp` commands run asynchronously and return empty stdout over `rcon-cli`.)*
   1. Run `lp export <name>` via **`minecraft-rcon`**.
-  2. Inspect `server/data/config/luckperms/<name>.json.gz` (using `zcat`), then remove the temporary export file.
+  2. Inspect `server/data/config/luckperms/<name>.json.gz` (using `zcat`), then remove the temporary `.json.gz` export file when done (`lp export` will not overwrite an existing archive).
 
 ---
 
-### Step 3: Export Versioned LuckPerms Snapshot to `server/mods/luckperms/configs/`
-To save a clean, Git-friendly snapshot of LuckPerms groups, tracks, and permissions (`users` stripped by default) into `server/mods/luckperms/configs/luckperms-snapshot.json`:
-
-```bash
-make lp-snapshot
-```
-*(Or pass `--keep-users` directly to `lp_snapshot.py` only when per-user records are intentionally needed.)*
+### Invariants & Guardrails
+- **Base Player Permissions (`group.default`):** Keep the 19 default Paradigm player nodes on `group.default` (`paradigm.msg`, `paradigm.reply`, `paradigm.mention.player`, `paradigm.spawn`, `paradigm.seen`, `paradigm.ignore`, `paradigm.home`, `paradigm.sethome`, `paradigm.delhome`, `paradigm.homes`, `paradigm.back`, `paradigm.tpa`, `paradigm.tpahere`, `paradigm.tpaccept`, `paradigm.tpdeny`, `paradigm.tpcancel`, `paradigm.warp`, `paradigm.warps`, `paradigm.warp.info`).
+- **Clan Suffix Reservation:** FCM Clans manages user suffixes at priority `100` (`lp user <uuid> meta setsuffix 100 "<tag>"`). Never overwrite or clear user suffixes when modifying permissions.
+- **Static LuckPerms Configs:** Never store live databases or snapshot exports inside `server/mods/luckperms/configs/` (only `luckperms.conf` and `contexts.json` are tracked there).
