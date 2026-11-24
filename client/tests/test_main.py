@@ -380,3 +380,88 @@ def test_cli_logging_level_reflects_verbose_flag(
 
     assert len(stub_logging_basic_config) == 1
     assert stub_logging_basic_config[0]["level"] == expected_level
+
+
+def test_main_calls_cleanup_old_binary_on_startup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    exe_path = tmp_path / "ModSync.exe"
+    exe_path.write_bytes(b"current-exe")
+    old_path = tmp_path / "ModSync.exe.old"
+    old_path.write_bytes(b"stale-old-binary")
+
+    cleanup_calls: list[bool] = []
+    real_cleanup = updater.cleanup_old_binary
+
+    def _spy_cleanup() -> None:
+        cleanup_calls.append(True)
+        real_cleanup()
+
+    monkeypatch.setattr(sys, "executable", str(exe_path))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cli_main, "cleanup_old_binary", _spy_cleanup)
+    monkeypatch.setattr(cli_main, "check_for_update", lambda _ver: None)
+
+    rc = cli_main.main(["--update"])
+
+    assert rc == 0
+    assert cleanup_calls == [True]
+    assert not old_path.exists()
+
+
+def test_cli_sync_once_auth_error_leaves_mods_dir_untouched(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    mods_dir = tmp_path / "mods"
+    mods_dir.mkdir()
+    existing_jar = mods_dir / "personal-minimap.jar"
+    existing_payload = b"user-jar-bytes"
+    existing_jar.write_bytes(existing_payload)
+
+    cfg = Config(
+        server_url="https://mods.example",
+        mods_dir=str(mods_dir),
+        client_token="wrong-token",
+    )
+
+    class ErrorSyncer:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def sync_once(self) -> SyncResult:
+            return SyncResult(
+                status=SyncStatus.ERROR,
+                version="",
+                mod_count=0,
+                message="Unauthorized (401)",
+            )
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
+    monkeypatch.setattr(cli_main, "resolve_or_setup_config", lambda _args: cfg)
+    monkeypatch.setattr(cli_main, "ModSyncer", ErrorSyncer)
+
+    rc = cli_main.main(["--sync-once"])
+
+    assert rc == 1
+    assert [p.name for p in mods_dir.iterdir()] == ["personal-minimap.jar"]
+    assert existing_jar.read_bytes() == existing_payload
+
+
+def test_cli_setup_headless_eof_exits_zero_without_writing_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cfg_path = tmp_path / "config.json"
+    monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
+    monkeypatch.setattr("builtins.input", _raise(EOFError()))
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main.main(["--setup", "--headless", "--sync-once", "--config", str(cfg_path)])
+
+    assert exc_info.value.code == 0
+    assert not cfg_path.exists()

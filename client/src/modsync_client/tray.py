@@ -106,7 +106,11 @@ class ModSyncTrayApp:
         self.status = status
         self.status_text = message
         self.icon.icon = make_badge_icon(STATUS_COLORS.get(status, DEFAULT_STATUS_COLOR))
-        self.icon.title = f"ModSync — {message}"[:MAX_TRAY_TITLE_LENGTH]
+        title = f"ModSync - {message}"[:MAX_TRAY_TITLE_LENGTH]
+        if sys.platform.startswith("linux"):
+            # pystray._xorg sets WM_NAME via python-xlib latin-1 encoding.
+            title = title.encode("latin-1", "replace").decode("latin-1")
+        self.icon.title = title
         self.icon.update_menu()
         self._notify_if_changed(message, result)
 

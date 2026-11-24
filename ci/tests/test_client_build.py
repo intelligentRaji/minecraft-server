@@ -30,7 +30,7 @@ class ClientBuildTests(unittest.TestCase):
         }
         with mock.patch.dict(os.environ, env, clear=True):
             paths = client_build.windows_defender_exclusion_paths()
-        self.assertEqual(paths, ["/ws", "/tmp/runner", str(Path("/local") / "Programs" / "ModSync")])
+        self.assertEqual(paths, ["/ws", "/tmp/runner"])
 
     def test_exclude_windows_defender_paths_warns_without_raising(self) -> None:
         failed = mock.Mock(returncode=1, stdout="", stderr="access denied")

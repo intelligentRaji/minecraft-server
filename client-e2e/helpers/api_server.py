@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from pathlib import Path
@@ -22,7 +22,8 @@ ENV_MODPACK_DIR = "MODPACK_DIR"
 ENV_MODSYNC_ADMIN_TOKEN = "MODSYNC_ADMIN_TOKEN"
 ENV_MODSYNC_CLIENT_TOKEN = "MODSYNC_CLIENT_TOKEN"
 ENV_MODSYNC_WS_PING_INTERVAL = "MODSYNC_WS_PING_INTERVAL"
-ENV_PYTHONPATH = "PYTHONPATH"
+ENV_VIRTUAL_ENV = "VIRTUAL_ENV"
+ENV_UV_PROJECT_ENVIRONMENT = "UV_PROJECT_ENVIRONMENT"
 
 ENDPOINT_HEALTH = "/health"
 ENDPOINT_MANIFEST = "/api/manifest"
@@ -45,7 +46,7 @@ PARAM_TOKEN = "token"
 LOOPBACK_HOST = "127.0.0.1"
 UVICORN_APP_TARGET = "app.main:app"
 UVICORN_LOG_LEVEL = "warning"
-UVICORN_LOG_FILENAME = "modsync_api_uvicorn.log"
+UVICORN_LOG_FILENAME_TEMPLATE = "modsync_api_uvicorn_{idx}.log"
 TEST_WS_PING_INTERVAL = "2.0"
 
 DEFAULT_ADMIN_TOKEN = "e2e-admin-secret-token"
@@ -76,6 +77,8 @@ class ModSyncTestServer:
     client_token: str = DEFAULT_CLIENT_TOKEN
     process: subprocess.Popen[str] | None = field(default=None, init=False)
     expected_hashes: dict[tuple[str, str], str] = field(default_factory=dict, init=False)
+    _start_index: int = field(default=0, init=False)
+    log_paths: list[Path] = field(default_factory=list, init=False)
 
     @property
     def server_url(self) -> str:
@@ -107,7 +110,17 @@ class ModSyncTestServer:
         self.expected_hashes.pop(mod.key, None)
 
     def start(self) -> None:
-        """Seed initial modpack layout, launch uvicorn, and wait until /health is ready."""
+        """Seed initial modpack layout, launch uvicorn via modsync_api/.venv, and wait for /health."""
+        api_venv = MODSYNC_API_DIR / ".venv"
+        if not api_venv.is_dir():
+            raise RuntimeError(
+                f"modsync_api virtualenv not found at {api_venv}. "
+                "Run `uv --directory modsync_api sync` before running client-e2e."
+            )
+        uv_exe = shutil.which("uv")
+        if not uv_exe:
+            raise RuntimeError("uv executable not found on PATH (required to launch modsync_api).")
+
         for category in MODPACK_CATEGORIES:
             (self.modpack_dir / category).mkdir(parents=True, exist_ok=True)
 
@@ -116,23 +129,25 @@ class ModSyncTestServer:
                 self.write_mod(mod)
 
         env = build_local_loopback_env()
+        env.pop(ENV_VIRTUAL_ENV, None)
+        env.pop(ENV_UV_PROJECT_ENVIRONMENT, None)
         env[ENV_MODPACK_DIR] = str(self.modpack_dir)
         env[ENV_MODSYNC_ADMIN_TOKEN] = self.admin_token
         env[ENV_MODSYNC_CLIENT_TOKEN] = self.client_token
         env[ENV_MODSYNC_WS_PING_INTERVAL] = TEST_WS_PING_INTERVAL
-        existing_pythonpath = env.get(ENV_PYTHONPATH, "")
-        env[ENV_PYTHONPATH] = (
-            f"{MODSYNC_API_DIR}{os.pathsep}{existing_pythonpath}"
-            if existing_pythonpath
-            else str(MODSYNC_API_DIR)
-        )
 
-        log_path = self.modpack_dir.parent / UVICORN_LOG_FILENAME
+        idx = self._start_index
+        self._start_index += 1
+        log_path = self.modpack_dir.parent / UVICORN_LOG_FILENAME_TEMPLATE.format(idx=idx)
+        self.log_paths.append(log_path)
         with log_path.open("w", encoding="utf-8") as log_file:
             self.process = subprocess.Popen(
                 [
-                    sys.executable,
-                    "-m",
+                    uv_exe,
+                    "--directory",
+                    str(MODSYNC_API_DIR),
+                    "run",
+                    "--no-sync",
                     "uvicorn",
                     UVICORN_APP_TARGET,
                     "--host",

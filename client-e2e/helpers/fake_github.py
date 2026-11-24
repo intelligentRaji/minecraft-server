@@ -36,7 +36,19 @@ class FakeGitHubReleasesServer:
     _server: ThreadingHTTPServer | None = field(default=None, init=False)
     _thread: threading.Thread | None = field(default=None, init=False)
     _thread_started: bool = field(default=False, init=False)
-    requests_seen: list[str] = field(default_factory=list, init=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+    _requests_seen: list[str] = field(default_factory=list, init=False)
+    _user_agents_seen: list[str] = field(default_factory=list, init=False)
+
+    @property
+    def requests_seen(self) -> list[str]:
+        with self._lock:
+            return list(self._requests_seen)
+
+    @property
+    def user_agents_seen(self) -> list[str]:
+        with self._lock:
+            return list(self._user_agents_seen)
 
     @property
     def releases_path(self) -> str:
@@ -70,7 +82,10 @@ class FakeGitHubReleasesServer:
 
             def do_GET(self) -> None:  # noqa: N802
                 path = self.path.split("?", 1)[0]
-                owner_server.requests_seen.append(path)
+                user_agent = str(self.headers.get("User-Agent", "")).strip()
+                with owner_server._lock:
+                    owner_server._requests_seen.append(path)
+                    owner_server._user_agents_seen.append(user_agent)
 
                 if path == owner_server.releases_path:
                     tag = f"{GITHUB_RELEASE_TAG_PREFIX}{owner_server.version}"

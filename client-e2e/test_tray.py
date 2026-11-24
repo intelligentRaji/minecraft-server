@@ -1,21 +1,22 @@
-"""E2E smoke test verifying ModSync boots in system-tray mode, self-updates/relaunches, and applies live WS updates."""
+"""E2E tests for ModSync system-tray boot, v99.0.0 self-update relaunch, and live WS push."""
 
 from __future__ import annotations
 
 import json
-import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
-import psutil
+import pytest
 from helpers.api_server import ModSyncTestServer
 from helpers.client_cli import (
     EXIT_CODE_SUCCESS,
     TIMEOUT_SYNC,
+    TRACEBACK_MARKER,
     ModSyncCli,
 )
-from helpers.dialog_driver import BaseDialogDriver
+from helpers.dialog_driver import BaseDialogDriver, is_ci_environment
 from helpers.env import IsolatedClientEnv
 from helpers.fake_github import DEFAULT_FAKE_RELEASE_VERSION, FakeGitHubReleasesServer
 from helpers.fixtures import (
@@ -28,28 +29,42 @@ from helpers.fixtures import (
 )
 from helpers.polling import FatalPollError, terminate_process_tree, wait_until
 
+TRAY_CRASH_MARKERS = (
+    "ImportError",
+    "ModuleNotFoundError",
+    "[PYI-",
+    TRACEBACK_MARKER,
+    "Failed to dock icon",
+    "AssertionError",
+)
 
-def _find_processes_by_executable(executable: Path) -> list[psutil.Process]:
-    resolved = os.path.normcase(str(executable.resolve()))
-    matches: list[psutil.Process] = []
-    for proc in psutil.process_iter():
-        try:
-            proc_exe = proc.exe()
-            if proc_exe and os.path.normcase(str(Path(proc_exe).resolve())) == resolved:
-                matches.append(proc)
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, OSError):
-            continue
-    return matches
+
+def _require_system_tray(dialog_driver: BaseDialogDriver) -> None:
+    if sys.platform != "win32" and not dialog_driver.has_system_tray:
+        msg = "X11 system tray (tint2) is unavailable in this environment"
+        if is_ci_environment():
+            pytest.fail(msg)
+        pytest.skip(msg)
+
+
+def _assert_clean_tray_logs(stderr_text: str, *, context: str) -> None:
+    for marker in TRAY_CRASH_MARKERS:
+        assert marker not in stderr_text, (
+            f"Unexpected tray error marker {marker!r} in {context} stderr:\n{stderr_text}"
+        )
 
 
 def test_self_update_relaunch_boots_tray_cleanly_without_pyinstaller_env_leak(
     client_cli: ModSyncCli,
     dialog_driver: BaseDialogDriver,
+    updated_modsync_bin: Path,
     api_server: ModSyncTestServer,
     isolated_env: IsolatedClientEnv,
     tmp_path: Path,
 ) -> None:
-    """Self-updating and relaunching a frozen binary must boot tray mode cleanly after parent exit."""
+    """Self-updating to v99.0.0 and relaunching must boot tray mode cleanly without env leaks."""
+    _require_system_tray(dialog_driver)
+
     target_bin = tmp_path / "relaunch-e2e" / client_cli.platform_asset_name
     target_bin.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(client_cli.binary, target_bin)
@@ -65,45 +80,47 @@ def test_self_update_relaunch_boots_tray_cleanly_without_pyinstaller_env_leak(
         ),
         encoding="utf-8",
     )
-    stderr_log = tmp_path / "relaunch-stderr.log"
 
+    expected_user_agent = f"ModSync/{DEFAULT_FAKE_RELEASE_VERSION}"
     with FakeGitHubReleasesServer(
         version=DEFAULT_FAKE_RELEASE_VERSION,
         asset_name=client_cli.platform_asset_name,
-        asset_payload=client_cli.binary.read_bytes(),
+        asset_payload=updated_modsync_bin.read_bytes(),
     ) as fake_github:
-        try:
-            rc = client_cli.update_and_relaunch(
-                github_api_url=fake_github.base_url,
-                binary=target_bin,
-                stderr_log=stderr_log,
-                env_overrides=dialog_driver.prepare_env(isolated_env.env),
-            )
+        with client_cli.spawn_tracked_relaunch(
+            github_api_url=fake_github.base_url,
+            binary=target_bin,
+            env_overrides=dialog_driver.prepare_env(isolated_env.env),
+        ) as relaunch:
+            rc = relaunch.wait_parent()
             assert rc == EXIT_CODE_SUCCESS, (
-                f"--update --relaunch failed (rc={rc}): "
-                f"{stderr_log.read_text(encoding='utf-8', errors='replace')!r}"
+                f"--update --relaunch failed (rc={rc}): {relaunch.read_stderr()!r}"
             )
 
             def _relaunched_ready() -> bool:
-                stderr_text = stderr_log.read_text(encoding="utf-8", errors="replace")
-                # Ignore non-fatal pystray Xvfb "Failed to dock icon" AssertionError; fail fast on boot/import crashes.
-                if any(marker in stderr_text for marker in ("ImportError", "ModuleNotFoundError", "[PYI-")):
-                    raise FatalPollError(f"Relaunched ModSync crashed:\n{stderr_text}")
-                running = any(p.is_running() for p in _find_processes_by_executable(target_bin))
-                return running and api_server.connected_clients() >= 1
+                stderr_text = relaunch.read_stderr()
+                for marker in TRAY_CRASH_MARKERS:
+                    if marker in stderr_text:
+                        raise FatalPollError(f"Relaunched ModSync tray crashed:\n{stderr_text}")
+                return (
+                    relaunch.is_child_running()
+                    and api_server.connected_clients() >= 1
+                    and expected_user_agent in fake_github.user_agents_seen
+                )
 
             try:
                 wait_until(
                     _relaunched_ready,
                     timeout=TIMEOUT_SYNC,
-                    description="relaunched tray process to boot and connect WebSocket",
+                    description="relaunched v99.0.0 tray process to boot, check updates, and connect WS",
                 )
             except TimeoutError as exc:
-                stderr_text = stderr_log.read_text(encoding="utf-8", errors="replace")
-                raise TimeoutError(f"{exc}; stderr={stderr_text!r}") from exc
-        finally:
-            for proc in _find_processes_by_executable(target_bin):
-                terminate_process_tree(proc.pid)
+                raise TimeoutError(
+                    f"{exc}; user_agents={fake_github.user_agents_seen!r}, "
+                    f"stderr={relaunch.read_stderr()!r}"
+                ) from exc
+
+            _assert_clean_tray_logs(relaunch.read_stderr(), context="relaunched tray")
 
 
 def test_tray_mode_boots_checks_updates_and_applies_live_ws_update(
@@ -112,7 +129,8 @@ def test_tray_mode_boots_checks_updates_and_applies_live_ws_update(
     api_server: ModSyncTestServer,
     isolated_env: IsolatedClientEnv,
 ) -> None:
-    """Tray mode boots with pystray, checks GitHub Releases without downloading, and applies WS reload updates."""
+    """Tray mode docks on tint2/Windows, checks GitHub Releases without downloading, and applies WS reload updates."""
+    _require_system_tray(dialog_driver)
     mods_dir = isolated_env.mods_dir
 
     with FakeGitHubReleasesServer(
@@ -126,13 +144,22 @@ def test_tray_mode_boots_checks_updates_and_applies_live_ws_update(
             github_api_url=fake_github.base_url,
             env_overrides=dialog_driver.prepare_env(isolated_env.env),
         )
+        _, stderr_log = client_cli.get_log_paths(proc)
         try:
             initial_state: dict[str, Any] = {}
 
             def _initial_ready() -> bool:
+                stderr_text = (
+                    stderr_log.read_text(encoding="utf-8", errors="replace")
+                    if stderr_log.is_file()
+                    else ""
+                )
+                for marker in TRAY_CRASH_MARKERS:
+                    if marker in stderr_text:
+                        raise FatalPollError(f"ModSync tray crashed during startup:\n{stderr_text}")
                 if proc.poll() is not None:
                     raise FatalPollError(
-                        f"ModSync tray process exited early with code {proc.returncode}"
+                        f"ModSync tray process exited early with code {proc.returncode}: {stderr_text!r}"
                     )
                 has_create = (mods_dir / DefaultMods.CREATE_V1.filename).is_file()
                 has_jei = (mods_dir / DefaultMods.JEI_V1.filename).is_file()
@@ -144,7 +171,7 @@ def test_tray_mode_boots_checks_updates_and_applies_live_ws_update(
                         "has_jei": has_jei,
                         "connected_clients": clients,
                         "update_checked": update_checked,
-                        "requests_seen": list(fake_github.requests_seen),
+                        "requests_seen": fake_github.requests_seen,
                     }
                 )
                 return has_create and has_jei and clients >= 1 and update_checked
@@ -202,5 +229,11 @@ def test_tray_mode_boots_checks_updates_and_applies_live_ws_update(
             assert proc.poll() is None, (
                 f"Tray process should still be running after live update, exited with code {proc.returncode}"
             )
+            stderr_text = (
+                stderr_log.read_text(encoding="utf-8", errors="replace")
+                if stderr_log.is_file()
+                else ""
+            )
+            _assert_clean_tray_logs(stderr_text, context="tray mode")
         finally:
             terminate_process_tree(proc)

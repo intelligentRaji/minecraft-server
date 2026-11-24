@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import shutil
 import subprocess
 import sys
-import time
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import psutil
+from .polling import run_with_tree_timeout, wait_until
+from .win_job import WinJobProcessTracker
 
-from .polling import (
-    get_process_tree_pids,
-    run_with_tree_timeout,
-    terminate_process_tree,
-    wait_until,
-)
+logger = logging.getLogger(__name__)
 
 APP_DISPLAY_NAME = "ModSync"
 WIN_APP_EXE_NAME = "ModSync.exe"
@@ -76,67 +74,65 @@ def hkcu_key_exists(subkey: str) -> bool:
         return False
 
 
-def run_inno_uninstaller(unins_exe: Path, *, timeout: float = TIMEOUT_CLI) -> int:
-    """Run an Inno Setup unins000.exe silently and wait for its phase-2 %TEMP% child process."""
-    proc = subprocess.Popen(
-        [str(unins_exe), *INNO_SILENT_FLAGS],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    tracked_procs: dict[int, psutil.Process] = {}
-    completed = False
+def _read_log_tail(log_path: Path, max_chars: int = 4000) -> str:
+    if not log_path.is_file():
+        return "<missing>"
+    text = log_path.read_text(encoding="utf-8", errors="replace").strip()
+    if len(text) > max_chars:
+        return f"...[truncated]\n{text[-max_chars:]}"
+    return text
+
+
+def run_inno_uninstaller(
+    unins_exe: Path,
+    *,
+    timeout: float = TIMEOUT_CLI,
+    log_path: Path | None = None,
+) -> int:
+    """Run an Inno Setup unins000.exe silently via Job Object and wait for its Phase-2 child."""
+    if sys.platform != "win32":
+        raise RuntimeError("run_inno_uninstaller is only supported on Windows")
+
+    temp_dir: Path | None = None
+    if log_path is None:
+        temp_dir = Path(tempfile.mkdtemp(prefix="modsync-unins-"))
+        effective_log = temp_dir / "uninstall.log"
+    else:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        effective_log = log_path
+
     try:
-        try:
-            tracked_procs[proc.pid] = psutil.Process(proc.pid)
-        except psutil.NoSuchProcess:
-            pass
-
-        deadline = time.monotonic() + timeout
-        # Poll closely while Phase 1 spawns the Phase 2 _iu*.tmp child in %TEMP%
-        while proc.poll() is None:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError(
-                    f"Timed out after {timeout:.1f}s waiting for {unins_exe.name} phase 1"
-                )
-            for pid in list(get_process_tree_pids(proc.pid)):
-                if pid not in tracked_procs:
-                    try:
-                        tracked_procs[pid] = psutil.Process(pid)
-                    except psutil.NoSuchProcess:
-                        pass
-            try:
-                proc.wait(timeout=min(POLL_INTERVAL_FAST, remaining))
-            except subprocess.TimeoutExpired:
-                pass
-
-        phase1_rc = proc.returncode if proc.returncode is not None else EXIT_CODE_SUCCESS
-        children = [p for pid, p in tracked_procs.items() if pid != proc.pid]
-        if not children:
-            completed = True
-            return phase1_rc
-
-        remaining = max(0.0, deadline - time.monotonic())
-        gone, alive = psutil.wait_procs(children, timeout=remaining)
-        if alive:
-            for p in alive:
-                terminate_process_tree(p.pid)
-            raise TimeoutError(
-                f"Inno uninstaller Phase 2 timed out after {timeout:.1f}s: {unins_exe}"
+        with WinJobProcessTracker() as tracker:
+            phase1_pid = tracker.spawn(
+                [str(unins_exe), *INNO_SILENT_FLAGS, f"/LOG={effective_log}"],
             )
-        for p in gone:
-            rc = getattr(p, "returncode", None)
-            if rc not in (None, EXIT_CODE_SUCCESS):
-                completed = True
-                return int(rc)
-        completed = True
+            try:
+                exit_codes = tracker.wait_all(timeout=timeout)
+            except TimeoutError as exc:
+                tail = _read_log_tail(effective_log)
+                raise TimeoutError(f"{exc}; uninstall_log={tail!r}") from exc
+
+        phase1_rc = exit_codes.get(phase1_pid, EXIT_CODE_SUCCESS)
+        for pid, rc in exit_codes.items():
+            if pid != phase1_pid and rc != EXIT_CODE_SUCCESS:
+                logger.warning(
+                    "Inno uninstaller Phase-2 pid=%s exited with %s; log=%s",
+                    pid,
+                    rc,
+                    _read_log_tail(effective_log),
+                )
+                return rc
+        if phase1_rc != EXIT_CODE_SUCCESS:
+            logger.warning(
+                "Inno uninstaller Phase-1 pid=%s exited with %s; log=%s",
+                phase1_pid,
+                phase1_rc,
+                _read_log_tail(effective_log),
+            )
         return phase1_rc
     finally:
-        if not completed:
-            terminate_process_tree(proc)
-            for pid in tracked_procs:
-                if pid != proc.pid:
-                    terminate_process_tree(pid)
+        if temp_dir is not None:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def default_install_dir() -> Path:
@@ -166,6 +162,7 @@ class WindowsInstallerHarness:
     installer_path: Path
     install_dir: Path = field(default_factory=default_install_dir)
     startup_script: Path = field(default_factory=user_startup_script_path)
+    last_uninstall_log: Path | None = field(default=None, init=False)
 
     @property
     def installed_exe(self) -> Path:
@@ -200,18 +197,30 @@ class WindowsInstallerHarness:
             timeout=TIMEOUT_INSTALLER,
         )
 
-    def uninstall_silent(self) -> int:
+    def uninstall_silent(self, *, log_path: Path | None = None) -> int:
         """Run the installed unins000.exe silently and return its exit code."""
-        return run_inno_uninstaller(self.uninstaller_exe)
+        self.last_uninstall_log = log_path
+        return run_inno_uninstaller(self.uninstaller_exe, log_path=log_path)
 
-    def uninstall_if_present(self, *, assert_clean: bool = False) -> None:
+    def read_last_uninstall_log(self) -> str:
+        """Return the tail of last_uninstall_log if recorded."""
+        if self.last_uninstall_log is None:
+            return "<no log path>"
+        return _read_log_tail(self.last_uninstall_log)
+
+    def uninstall_if_present(
+        self,
+        *,
+        assert_clean: bool = False,
+        log_path: Path | None = None,
+    ) -> None:
         """Cleanly remove an existing installation if unins000.exe is present."""
         if self.uninstaller_exe.is_file():
-            rc = self.uninstall_silent()
+            rc = self.uninstall_silent(log_path=log_path)
             if assert_clean and rc != EXIT_CODE_SUCCESS:
                 raise AssertionError(
                     f"Pre-existing installation uninstall failed with exit code {rc}: "
-                    f"{self.uninstaller_exe}"
+                    f"{self.uninstaller_exe}; log={self.read_last_uninstall_log()!r}"
                 )
 
     def assert_installed_and_registered(self) -> None:

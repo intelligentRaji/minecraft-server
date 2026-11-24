@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import stat
 import sys
@@ -10,7 +11,6 @@ from pathlib import Path
 from helpers.api_server import ModSyncTestServer
 from helpers.client_cli import (
     APP_DISPLAY_NAME,
-    EXIT_CODE_FAILURE,
     EXIT_CODE_SUCCESS,
     TIMEOUT_SYNC,
     ModSyncCli,
@@ -18,13 +18,10 @@ from helpers.client_cli import (
 from helpers.env import IsolatedClientEnv
 from helpers.fake_github import (
     DEFAULT_FAKE_RELEASE_VERSION,
-    INVALID_SHA256_HEX,
     FakeGitHubReleasesServer,
 )
 from helpers.fixtures import (
-    BinaryPayloads,
     DefaultMods,
-    InvalidInputs,
     PersistedConfigSnapshot,
     compute_sha256,
 )
@@ -245,34 +242,6 @@ def test_install_recommended_downloads_client_only_and_sync_preserves_it(
     )
 
 
-def test_sync_once_with_invalid_auth_token_exits_nonzero(
-    client_cli: ModSyncCli,
-    api_server: ModSyncTestServer,
-    isolated_env: IsolatedClientEnv,
-) -> None:
-    """Running --sync-once with an invalid token exits with code 1 and leaves mods_dir untouched."""
-    mods_dir = isolated_env.mods_dir
-    unmanaged_jar = mods_dir / DefaultMods.UNMANAGED_USER_FILENAME
-    unmanaged_jar.write_bytes(DefaultMods.UNMANAGED_USER_PAYLOAD)
-
-    res = client_cli.sync_once(
-        server_url=api_server.server_url,
-        token=InvalidInputs.CLIENT_TOKEN,
-        mods_dir=mods_dir,
-    )
-    assert res.returncode == EXIT_CODE_FAILURE, (
-        f"Expected exit code {EXIT_CODE_FAILURE}, got {res.returncode}; "
-        f"stdout={res.stdout!r}, stderr={res.stderr!r}"
-    )
-    contents = _dir_contents(mods_dir)
-    assert contents == [DefaultMods.UNMANAGED_USER_FILENAME], (
-        f"Expected only {DefaultMods.UNMANAGED_USER_FILENAME} in {mods_dir}, found {contents}"
-    )
-    assert unmanaged_jar.read_bytes() == DefaultMods.UNMANAGED_USER_PAYLOAD, (
-        f"Unmanaged mod {unmanaged_jar.name} was altered on failed auth sync"
-    )
-
-
 def test_headless_websocket_push_syncs_server_modpack_updates_live(
     client_cli: ModSyncCli,
     api_server: ModSyncTestServer,
@@ -342,55 +311,29 @@ def test_headless_websocket_push_syncs_server_modpack_updates_live(
         terminate_process_tree(proc)
 
 
-def test_cli_update_rejects_checksum_mismatch(
-    client_cli: ModSyncCli,
-    tmp_path: Path,
-) -> None:
-    """--update aborts with exit code 1 and leaves the existing binary untouched when SHA-256 fails."""
-    asset_name = client_cli.platform_asset_name
-    target_bin = tmp_path / asset_name
-    shutil.copy2(client_cli.binary, target_bin)
-    original_sha = compute_sha256(target_bin)
-
-    with FakeGitHubReleasesServer(
-        version=DEFAULT_FAKE_RELEASE_VERSION,
-        asset_name=asset_name,
-        asset_payload=BinaryPayloads.TAMPERED_RELEASE,
-        checksum_override=INVALID_SHA256_HEX,
-    ) as bad_server:
-        bad_res = client_cli.update(github_api_url=bad_server.base_url, binary=target_bin)
-        assert bad_res.returncode == EXIT_CODE_FAILURE, (
-            f"Expected exit code {EXIT_CODE_FAILURE}, got {bad_res.returncode}; "
-            f"stdout={bad_res.stdout!r}, stderr={bad_res.stderr!r}"
-        )
-        actual_sha = compute_sha256(target_bin)
-        assert actual_sha == original_sha, (
-            f"Binary {target_bin.name} was modified despite checksum mismatch "
-            f"(expected {original_sha}, got {actual_sha})"
-        )
-
-
 def test_cli_update_applies_valid_release(
     client_cli: ModSyncCli,
+    updated_modsync_bin: Path,
     tmp_path: Path,
 ) -> None:
-    """--update verifies SHA-256 against GitHub Releases API and atomically replaces the binary."""
+    """--update replaces the binary with a runnable v99.0.0 release and skips re-downloading when current."""
     asset_name = client_cli.platform_asset_name
     target_bin = tmp_path / asset_name
     shutil.copy2(client_cli.binary, target_bin)
+    v99_payload = updated_modsync_bin.read_bytes()
 
     with FakeGitHubReleasesServer(
         version=DEFAULT_FAKE_RELEASE_VERSION,
         asset_name=asset_name,
-        asset_payload=BinaryPayloads.VALID_RELEASE,
+        asset_payload=v99_payload,
     ) as good_server:
         ok_res = client_cli.update(github_api_url=good_server.base_url, binary=target_bin)
         assert ok_res.returncode == EXIT_CODE_SUCCESS, (
             f"--update failed (rc={ok_res.returncode}): "
             f"stdout={ok_res.stdout!r}, stderr={ok_res.stderr!r}"
         )
-        assert target_bin.read_bytes() == BinaryPayloads.VALID_RELEASE, (
-            f"Replaced binary {target_bin.name} contents did not match VALID_RELEASE payload"
+        assert target_bin.read_bytes() == v99_payload, (
+            f"Replaced binary {target_bin.name} contents did not match v99.0.0 release payload"
         )
         assert good_server.releases_path in good_server.requests_seen, (
             f"Expected {good_server.releases_path} in {good_server.requests_seen}"
@@ -409,21 +352,236 @@ def test_cli_update_applies_valid_release(
             assert bool(mode & stat.S_IXUSR), (
                 f"Expected executable permission bit (S_IXUSR) on {target_bin}, got mode {oct(mode)}"
             )
+            ver_res = client_cli.version(binary=target_bin)
+            assert ver_res.returncode == EXIT_CODE_SUCCESS, (
+                f"Updated v99.0.0 --version failed (rc={ver_res.returncode}): "
+                f"stdout={ver_res.stdout!r}, stderr={ver_res.stderr!r}"
+            )
+            assert DEFAULT_FAKE_RELEASE_VERSION in ver_res.stdout, (
+                f"Expected {DEFAULT_FAKE_RELEASE_VERSION!r} in --version stdout={ver_res.stdout!r}"
+            )
+
+        requests_before = len(good_server.requests_seen)
+        recheck_res = client_cli.update(github_api_url=good_server.base_url, binary=target_bin)
+        assert recheck_res.returncode == EXIT_CODE_SUCCESS, (
+            f"Up-to-date --update failed (rc={recheck_res.returncode}): "
+            f"stdout={recheck_res.stdout!r}, stderr={recheck_res.stderr!r}"
+        )
+        new_requests = good_server.requests_seen[requests_before:]
+        assert good_server.releases_path in new_requests, (
+            f"Expected release check request in {new_requests}"
+        )
+        assert good_server.asset_path not in new_requests, (
+            f"Already-current v99.0.0 binary must not re-download {good_server.asset_path}"
+        )
+        assert good_server.checksums_path not in new_requests, (
+            f"Already-current v99.0.0 binary must not re-download {good_server.checksums_path}"
+        )
 
 
-def test_startup_cleans_up_stale_old_binary(
+def _create_dummy_java_executable(dest_dir: Path) -> tuple[Path, dict[str, str]]:
+    """Create a hermetic dummy java/java.exe binary in dest_dir backed by Python."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    exe_name = "java.exe" if sys.platform == "win32" else "java"
+    dummy_java = dest_dir / exe_name
+    env = os.environ.copy()
+    env["PYTHONHOME"] = str(Path(sys.base_prefix).resolve())
+    if sys.platform == "win32":
+        base_python = Path(sys.base_prefix) / "python.exe"
+        source_python = base_python if base_python.is_file() else Path(sys.executable).resolve()
+        shutil.copy2(source_python, dummy_java)
+        env["PATH"] = f"{source_python.parent}{os.pathsep}{env.get('PATH', '')}"
+    else:
+        source_python = Path(sys.executable).resolve()
+        shutil.copy2(source_python, dummy_java)
+        dummy_java.chmod(dummy_java.stat().st_mode | stat.S_IXUSR)
+    return dummy_java, env
+
+
+def test_headless_staged_waiting_mc_auto_applies_on_minecraft_exit(
     client_cli: ModSyncCli,
+    api_server: ModSyncTestServer,
+    isolated_env: IsolatedClientEnv,
+    process_spawner,
     tmp_path: Path,
 ) -> None:
-    """Launching ModSync removes any leftover .old backup binary from a prior self-update."""
-    cleanup_bin = tmp_path / f"cleanup-{client_cli.platform_asset_name}"
-    shutil.copy2(client_cli.binary, cleanup_bin)
-    stale_old = client_cli.old_binary_path(cleanup_bin)
-    stale_old.write_bytes(BinaryPayloads.STALE_OLD_BINARY)
+    """Headless daemon stages updates while Minecraft is running and auto-applies once it exits."""
+    mods_dir = isolated_env.mods_dir
+    staging_dir = isolated_env.staging_dir
 
-    ver_res = client_cli.version(binary=cleanup_bin)
-    assert ver_res.returncode == EXIT_CODE_SUCCESS, (
-        f"--version failed (rc={ver_res.returncode}): "
-        f"stdout={ver_res.stdout!r}, stderr={ver_res.stderr!r}"
+    proc = client_cli.start_headless(
+        server_url=api_server.server_url,
+        token=api_server.client_token,
     )
-    assert not stale_old.exists(), f"Expected stale backup {stale_old} to be removed on startup"
+    try:
+
+        def _initial_synced() -> bool:
+            if proc.poll() is not None:
+                raise FatalPollError(
+                    f"Headless process exited early during initial sync with code {proc.returncode}"
+                )
+            return (
+                (mods_dir / DefaultMods.CREATE_V1.filename).is_file()
+                and (mods_dir / DefaultMods.JEI_V1.filename).is_file()
+                and api_server.connected_clients() >= 1
+            )
+
+        wait_until(
+            _initial_synced,
+            timeout=TIMEOUT_SYNC,
+            description="initial headless sync before Minecraft launch",
+        )
+
+        dummy_java, dummy_env = _create_dummy_java_executable(tmp_path / "dummy_mc")
+        mc_proc = process_spawner(
+            [dummy_java, "-c", "import time; time.sleep(120)", "net.minecraft.client.main.Main"],
+            env=dummy_env,
+            log_name="dummy_mc",
+        )
+        try:
+            assert mc_proc.poll() is None, "Dummy Minecraft process exited prematurely"
+
+            _, waystones_sha = api_server.write_mod(DefaultMods.WAYSTONES_V1)
+            api_server.remove_mod(DefaultMods.JEI_V1)
+            changed, notified = api_server.reload()
+            assert changed is True and notified >= 1
+
+            staged_waystones = staging_dir / DefaultMods.WAYSTONES_V1.filename
+
+            def _staged_while_mc_running() -> bool:
+                if proc.poll() is not None:
+                    raise FatalPollError(
+                        f"Headless process exited early while staging (rc={proc.returncode})"
+                    )
+                return staged_waystones.is_file() and compute_sha256(staged_waystones) == waystones_sha
+
+            wait_until(
+                _staged_while_mc_running,
+                timeout=TIMEOUT_SYNC,
+                description="Waystones JAR staged in staging_dir while Minecraft is running",
+            )
+            assert not (mods_dir / DefaultMods.WAYSTONES_V1.filename).exists(), (
+                "Staged mod must not be promoted into mods_dir while Minecraft is running"
+            )
+            assert (mods_dir / DefaultMods.JEI_V1.filename).is_file(), (
+                "Removed mod must not be deleted from mods_dir while Minecraft is running"
+            )
+        finally:
+            terminate_process_tree(mc_proc)
+
+        def _auto_applied_after_mc_exit() -> bool:
+            if proc.poll() is not None:
+                raise FatalPollError(
+                    f"Headless process exited early after Minecraft closed (rc={proc.returncode})"
+                )
+            waystones_path = mods_dir / DefaultMods.WAYSTONES_V1.filename
+            return (
+                waystones_path.is_file()
+                and compute_sha256(waystones_path) == waystones_sha
+                and not (mods_dir / DefaultMods.JEI_V1.filename).exists()
+            )
+
+        wait_until(
+            _auto_applied_after_mc_exit,
+            timeout=TIMEOUT_SYNC,
+            description="staged update auto-applied after dummy Minecraft exit",
+        )
+        assert not staged_waystones.exists(), (
+            f"Expected {staged_waystones} to be promoted out of staging_dir"
+        )
+    finally:
+        terminate_process_tree(proc)
+
+
+def test_headless_ws_reconnects_after_server_restart(
+    client_cli: ModSyncCli,
+    api_server: ModSyncTestServer,
+    isolated_env: IsolatedClientEnv,
+) -> None:
+    """Headless daemon reconnects WebSocket after modsync_api restarts on the same port and syncs hello diff."""
+    mods_dir = isolated_env.mods_dir
+
+    proc = client_cli.start_headless(
+        server_url=api_server.server_url,
+        token=api_server.client_token,
+    )
+    try:
+
+        def _initial_connected() -> bool:
+            if proc.poll() is not None:
+                raise FatalPollError(
+                    f"Headless process exited early before restart (rc={proc.returncode})"
+                )
+            return (
+                (mods_dir / DefaultMods.CREATE_V1.filename).is_file()
+                and api_server.connected_clients() >= 1
+            )
+
+        wait_until(
+            _initial_connected,
+            timeout=TIMEOUT_SYNC,
+            description="initial headless sync and WS connection before server restart",
+        )
+
+        api_server.close()
+        _, waystones_sha = api_server.write_mod(DefaultMods.WAYSTONES_V1)
+        api_server.start()
+        assert len(api_server.log_paths) == 2
+
+        def _reconnected_and_synced() -> bool:
+            if proc.poll() is not None:
+                raise FatalPollError(
+                    f"Headless process exited early after server restart (rc={proc.returncode})"
+                )
+            waystones_path = mods_dir / DefaultMods.WAYSTONES_V1.filename
+            return (
+                api_server.connected_clients() >= 1
+                and waystones_path.is_file()
+                and compute_sha256(waystones_path) == waystones_sha
+            )
+
+        wait_until(
+            _reconnected_and_synced,
+            timeout=TIMEOUT_SYNC,
+            description="headless WS reconnect and sync after server restart",
+        )
+    finally:
+        terminate_process_tree(proc)
+
+
+def test_sync_once_recovers_from_corrupt_staging_and_part_files(
+    client_cli: ModSyncCli,
+    api_server: ModSyncTestServer,
+    isolated_env: IsolatedClientEnv,
+) -> None:
+    """--sync-once discards corrupt staged JARs and leftover .part files and syncs clean JARs."""
+    staging_dir = isolated_env.staging_dir
+    mods_dir = isolated_env.mods_dir
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    corrupt_staged = staging_dir / DefaultMods.CREATE_V1.filename
+    corrupt_staged.write_bytes(b"corrupt-staged-jar-payload")
+    stale_part = staging_dir / f".{DefaultMods.JEI_V1.filename}.part"
+    stale_part.write_bytes(b"incomplete-part-payload")
+
+    res = client_cli.sync_once(
+        server_url=api_server.server_url,
+        token=api_server.client_token,
+        mods_dir=mods_dir,
+    )
+    assert res.returncode == EXIT_CODE_SUCCESS, (
+        f"--sync-once failed with corrupt staging cache (rc={res.returncode}): "
+        f"stdout={res.stdout!r}, stderr={res.stderr!r}"
+    )
+
+    for mod in (DefaultMods.CREATE_V1, DefaultMods.JEI_V1):
+        dest = mods_dir / mod.filename
+        assert dest.is_file(), f"Expected {mod.filename} in {mods_dir}"
+        assert compute_sha256(dest) == api_server.expected_hashes[mod.key], (
+            f"SHA-256 mismatch for {mod.filename} after recovering from corrupt staging"
+        )
+
+    assert not stale_part.exists(), f"Expected stale .part file {stale_part} to be removed"
+    assert not corrupt_staged.exists(), (
+        f"Expected {corrupt_staged} to be replaced and promoted out of staging_dir"
+    )

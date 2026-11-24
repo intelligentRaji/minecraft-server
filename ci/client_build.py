@@ -22,15 +22,12 @@ def sync_client_version(version: str, *, init_path: Path = CLIENT_INIT_PATH) -> 
 
 
 def windows_defender_exclusion_paths() -> list[str]:
-    """Collect deduplicated workspace, temp, and install paths for Windows Defender exclusions."""
+    """Collect deduplicated workspace and temp paths for Windows Defender exclusions."""
     candidates: list[str] = []
     for var in ("GITHUB_WORKSPACE", "TEMP", "TMP"):
         val = os.environ.get(var, "").strip()
         if val:
             candidates.append(val)
-    local_appdata = os.environ.get("LOCALAPPDATA", "").strip()
-    if local_appdata:
-        candidates.append(str(Path(local_appdata) / "Programs" / "ModSync"))
 
     unique: list[str] = []
     seen: set[str] = set()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import sys
 import types
 from collections.abc import Callable
@@ -591,3 +592,44 @@ def test_prompt_config_gui_completion_returns_config(
         mods_dir=str(mc_dir / "mods"),
         client_token="gui-tok",
     )
+
+
+def test_resolve_or_setup_config_setup_invalid_invite_exits_nonzero_without_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cfg_path = tmp_path / "config.json"
+    monkeypatch.setattr(sys, "stdin", io.StringIO("modsync://connect?url=ftp://invalid\n"))
+    args = build_parser().parse_args(["--config", str(cfg_path), "--setup", "--headless"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        resolve_or_setup_config(args)
+
+    assert exc_info.value.code not in (None, 0)
+    assert "Invalid" in str(exc_info.value)
+    assert not cfg_path.exists()
+
+
+def test_resolve_or_setup_config_setup_eof_preserves_existing_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cfg_path = tmp_path / "config.json"
+    save_config(
+        Config(
+            server_url="https://saved.example.com",
+            mods_dir=str(tmp_path / "mods"),
+            client_token="keep-token",
+        ),
+        cfg_path,
+    )
+    original_bytes = cfg_path.read_bytes()
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    args = build_parser().parse_args(["--config", str(cfg_path), "--setup", "--headless"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        resolve_or_setup_config(args)
+
+    assert exc_info.value.code == 0
+    assert cfg_path.read_bytes() == original_bytes

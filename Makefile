@@ -45,6 +45,7 @@ client-build: ## Build standalone client binary via PyInstaller (host OS)
 	cd client && uv sync --group dev && uv run pyinstaller modsync.spec --clean --noconfirm
 
 client-e2e: ## Run cross-platform client E2E tests against built binary
+	@if [ ! -d modsync_api/.venv ]; then uv --directory modsync_api sync; fi
 	uv --directory client-e2e run pytest -v
 
 invite-link: ## Print modsync:// invite link from .env (MODSYNC_SERVER_URL + MODSYNC_CLIENT_TOKEN)

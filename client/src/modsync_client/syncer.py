@@ -381,7 +381,7 @@ class ModSyncer:
                 added=tuple(m.filename for m in to_add),
                 updated=tuple(m.filename for m in to_update),
                 removed=tuple(to_remove),
-                message=f"Update staged ({pending_count} change(s)) — close Minecraft to apply",
+                message=f"Update staged ({pending_count} change(s)) - close Minecraft to apply",
             )
 
         return self._apply_changes(manifest, target_mods, to_add, to_update, to_remove)

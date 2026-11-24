@@ -65,7 +65,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk xvfb xdotool openbox
+          sudo apt-get install -y python3-tk xvfb xdotool openbox tint2
       - name: Install client dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
         working-directory: client
@@ -82,6 +82,9 @@ jobs:
       - name: Rename Linux binary
         if: matrix.os == 'ubuntu-latest'
         run: mv client/dist/ModSync client/dist/ModSync-linux
+      - name: Sync modsync_api dependencies
+        working-directory: modsync_api
+        run: uv sync
       - name: Install client-e2e dependencies
         working-directory: client-e2e
         run: uv sync
@@ -90,13 +93,24 @@ jobs:
         working-directory: client-e2e
         env:
           MODSYNC_INSTALLER: ${{ github.workspace }}/client/dist/ModSync-Setup.exe
+          MODSYNC_E2E_ALLOW_HOST_INSTALLER: "1"
+          MODSYNC_E2E_ARTIFACTS_DIR: ${{ github.workspace }}/client-e2e/artifacts
         run: uv run --no-sync pytest -v
       - name: Run client E2E tests (Linux)
         if: matrix.os == 'ubuntu-latest'
         working-directory: client-e2e
         env:
           MODSYNC_BIN: ${{ github.workspace }}/client/dist/ModSync-linux
+          MODSYNC_E2E_ARTIFACTS_DIR: ${{ github.workspace }}/client-e2e/artifacts
         run: uv run --no-sync pytest -v
+      - name: Upload client E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-e2e-diagnostics-${{ matrix.os }}
+          path: client-e2e/artifacts
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.retention_days }}
       - name: Upload verified build artifact
         uses: actions/upload-artifact@v4
         with:

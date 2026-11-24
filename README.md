@@ -121,6 +121,7 @@ make reload
 | CoreCommands | `corecommands-2.0.1.jar` |
 | Create | `create-1.20.1-6.0.8.jar` |
 | Create: Slice & Dice | `sliceanddice-forge-3.6.0.jar` |
+| Create: Ultimate Factory | `create_ultimate_factory-2.2.4-forge-1.20.1.jar` |
 | Curios API | `curios-forge-5.14.1+1.20.1.jar` |
 | Dynamic Trees | `DynamicTrees-1.20.1-1.4.11.jar` |
 | Dynamic Trees - Biomes O' Plenty | `DynamicTreesBOP-1.20.1-3.3.4.jar` |
