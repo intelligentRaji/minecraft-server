@@ -260,7 +260,19 @@ def test_status_update_truncates_long_tray_title(
     app.service.on_status(SyncStatus.SYNCING, long_msg, None)
 
     assert len(app.icon.title) == tray_mod.MAX_TRAY_TITLE_LENGTH
-    assert app.icon.title.startswith("ModSync — ")
+    assert app.icon.title.startswith("ModSync - ")
+
+
+def test_status_update_sanitizes_non_latin1_title_on_linux(
+    tray_env: tuple[Any, Any, Config, Path],
+) -> None:
+    _, make_app, _, _ = tray_env
+    app = make_app()
+
+    app.service.on_status(SyncStatus.SYNCING, "Update \u2014 staged", None)
+
+    app.icon.title.encode("latin-1")
+    assert app.icon.title.startswith("ModSync - Update ")
 
 
 def test_status_update_with_empty_result_does_not_notify(

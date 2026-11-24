@@ -406,25 +406,70 @@ class Win32DialogDriver(BaseDialogDriver):
         if USER32.IsWindowVisible(hwnd) and window.class_name == WIN32_DIALOG_CLASS:
             USER32.PostMessageW(hwnd, WM_COMMAND, IDCANCEL, 0)
 
+    def _find_edit_under_container(self, container_hwnd: int) -> int | None:
+        combo = USER32.FindWindowExW(container_hwnd, 0, "ComboBox", None)
+        if combo:
+            edit = USER32.FindWindowExW(combo, 0, "Edit", None)
+            if edit:
+                return int(edit)
+        edit = USER32.FindWindowExW(container_hwnd, 0, "Edit", None)
+        if edit:
+            return int(edit)
+        return None
+
     def _find_folder_edit_hwnd(self, dialog_hwnd: int) -> int:
-        combobox_ex_handles: list[int] = []
+        def _probe() -> int | None:
+            float_sinks: list[int] = []
+            combobox_ex_handles: list[int] = []
+            combobox_handles: list[int] = []
 
-        def _collect_cbex(child_hwnd: int, _lparam: int) -> bool:
-            if self._window_class(child_hwnd) == "ComboBoxEx32":
-                combobox_ex_handles.append(int(child_hwnd))
-            return True
+            def _collect(child_hwnd: int, _lparam: int) -> bool:
+                cls = self._window_class(child_hwnd)
+                if cls == "FloatNotifySink":
+                    float_sinks.append(int(child_hwnd))
+                elif cls == "ComboBoxEx32":
+                    combobox_ex_handles.append(int(child_hwnd))
+                elif cls == "ComboBox":
+                    combobox_handles.append(int(child_hwnd))
+                return True
 
-        USER32.EnumChildWindows(dialog_hwnd, WNDENUMCHILDPROC(_collect_cbex), 0)
-        for cbex in combobox_ex_handles:
-            combo = USER32.FindWindowExW(cbex, 0, "ComboBox", None)
-            if combo:
+            USER32.EnumChildWindows(dialog_hwnd, WNDENUMCHILDPROC(_collect), 0)
+            for sink in float_sinks:
+                edit = self._find_edit_under_container(sink)
+                if edit:
+                    return edit
+            for cbex in combobox_ex_handles:
+                edit = self._find_edit_under_container(cbex)
+                if edit:
+                    return edit
+            for combo in combobox_handles:
                 edit = USER32.FindWindowExW(combo, 0, "Edit", None)
                 if edit:
                     return int(edit)
-            edit = USER32.FindWindowExW(cbex, 0, "Edit", None)
-            if edit:
-                return int(edit)
-        raise RuntimeError(f"Could not locate Folder ComboBoxEx32->ComboBox->Edit in dialog {dialog_hwnd}")
+            return None
+
+        return wait_until(
+            _probe,
+            timeout=5.0,
+            interval=POLL_INTERVAL_FAST,
+            description=f"Folder Edit control inside Win32 dialog {dialog_hwnd}",
+        )
+
+    def _dismiss_owned_error_popups(self, dialog_hwnd: int) -> None:
+        owned_popups: list[int] = []
+
+        def _collect_owned(hwnd: int, _lparam: int) -> bool:
+            if (
+                USER32.IsWindowVisible(hwnd)
+                and int(USER32.GetWindow(hwnd, GW_OWNER) or 0) == dialog_hwnd
+                and self._window_class(hwnd) == WIN32_DIALOG_CLASS
+            ):
+                owned_popups.append(int(hwnd))
+            return True
+
+        USER32.EnumWindows(WNDENUMPROC(_collect_owned), 0)
+        for popup in owned_popups:
+            self._click_dialog_ok(popup)
 
     def _focus_child_control(self, dialog_hwnd: int, child_hwnd: int) -> None:
         self._focus_window(dialog_hwnd)
@@ -442,6 +487,7 @@ class Win32DialogDriver(BaseDialogDriver):
 
     def select_folder(self, window: DialogWindow, folder_path: Path) -> None:
         hwnd = window.handle
+        self._dismiss_owned_error_popups(hwnd)
         edit_hwnd = self._find_folder_edit_hwnd(hwnd)
         self._focus_child_control(hwnd, edit_hwnd)
         self._clear_focused_input()

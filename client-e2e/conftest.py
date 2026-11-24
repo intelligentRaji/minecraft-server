@@ -246,7 +246,16 @@ def isolated_env(tmp_path: Path) -> IsolatedClientEnv:
     xdg_config_dir = root / "xdg_config"
     mods_dir = root / "target_mods"
 
-    for directory in (home_dir, appdata_dir, localappdata_dir, xdg_config_dir, mods_dir):
+    for directory in (
+        home_dir,
+        home_dir / "Desktop",
+        home_dir / "Documents",
+        home_dir / "Downloads",
+        appdata_dir,
+        localappdata_dir,
+        xdg_config_dir,
+        mods_dir,
+    ):
         directory.mkdir(parents=True, exist_ok=True)
 
     # Create a detectable .minecraft/mods folder so detect_minecraft_dirs() finds it first
