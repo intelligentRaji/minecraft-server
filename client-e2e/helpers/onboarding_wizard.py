@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TypeVar
 
 import pytest
@@ -31,6 +33,7 @@ class OnboardingWizard:
     cli: ModSyncCli
     driver: BaseDialogDriver
     proc: subprocess.Popen[str]
+    stderr_log: Path
     _seen_handles: set[int] = field(default_factory=set)
 
     @classmethod
@@ -47,27 +50,43 @@ class OnboardingWizard:
             pytest.skip(msg)
 
         proc = cli.launch_gui_setup(dialog_driver=driver)
-        return cls(cli=cli, driver=driver, proc=proc)
+        _, stderr_log = cli.get_log_paths(proc)
+        return cls(cli=cli, driver=driver, proc=proc, stderr_log=stderr_log)
+
+    def _read_stderr_tail(self, max_chars: int = 4000) -> str:
+        if not self.stderr_log.is_file():
+            return ""
+        text = self.stderr_log.read_text(encoding="utf-8", errors="replace").strip()
+        if len(text) > max_chars:
+            return f"...[truncated]\n{text[-max_chars:]}"
+        return text
 
     def _diagnostic_context(self) -> str:
         rc = self.proc.poll()
-        stderr_detail = ""
-        if rc is not None and self.proc.stderr is not None:
-            try:
-                stderr_detail = self.proc.stderr.read().strip()
-            except (OSError, ValueError):
-                stderr_detail = "<unavailable>"
+        stderr_detail = self._read_stderr_tail()
         try:
             visible = [(w.handle, w.title) for w in self.driver.list_visible_windows(self.proc.pid)]
         except Exception as exc:
             visible = [f"<error: {exc}>"]
         return f"proc_rc={rc!r}, visible_windows={visible!r}, stderr={stderr_detail!r}"
 
+    def _capture_failure_screenshot(self, action_name: str) -> str:
+        safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", action_name).strip("_") or "step"
+        shot_path = self.stderr_log.parent / f"wizard_failure_{safe_name}.png"
+        try:
+            captured = self.driver.capture_screenshot(shot_path)
+            return str(captured) if captured is not None else "<unavailable>"
+        except Exception as exc:
+            return f"<screenshot-error: {exc}>"
+
     def _run_step(self, action_name: str, fn: Callable[[], T]) -> T:
         try:
             return fn()
         except Exception as exc:
-            raise RuntimeError(f"{action_name} failed ({exc}); {self._diagnostic_context()}") from exc
+            shot = self._capture_failure_screenshot(action_name)
+            raise RuntimeError(
+                f"{action_name} failed ({exc}); screenshot={shot}; {self._diagnostic_context()}"
+            ) from exc
 
     def _wait_next_dialog(self, title: str) -> DialogWindow:
         win = self._run_step(
@@ -130,6 +149,14 @@ class OnboardingWizard:
             lambda: self.driver.accept_dialog(dialog),
         )
 
+    def select_folder(self, folder_path: Path) -> None:
+        """Select folder_path in the Step 3 'Select Minecraft folder' directory picker."""
+        dialog = self._wait_next_dialog(DIALOG_TITLE_SELECT_FOLDER)
+        self._run_step(
+            f"select_folder({folder_path})",
+            lambda: self.driver.select_folder(dialog, folder_path),
+        )
+
     def cancel_folder_picker(self) -> None:
         """Cancel or close the Step 3 'Select Minecraft folder' directory picker."""
         dialog = self._wait_next_dialog(DIALOG_TITLE_SELECT_FOLDER)
@@ -140,8 +167,12 @@ class OnboardingWizard:
 
     def assert_cancelled_cleanly(self) -> None:
         """Assert the wizard exited 0 without traceback or persisting config.json."""
-        _, stderr = self.proc.communicate(timeout=TIMEOUT_DIALOG)
-        rc = self.proc.returncode
+        rc = self.proc.wait(timeout=TIMEOUT_DIALOG)
+        stderr = (
+            self.stderr_log.read_text(encoding="utf-8", errors="replace")
+            if self.stderr_log.is_file()
+            else ""
+        )
         assert rc == EXIT_CODE_SUCCESS, (
             f"Expected exit code {EXIT_CODE_SUCCESS} on cancellation, got {rc}: {stderr}"
         )
@@ -150,8 +181,12 @@ class OnboardingWizard:
 
     def assert_completed_successfully(self) -> PersistedConfigSnapshot:
         """Assert the wizard exited 0, wrote config.json, and return its snapshot."""
-        _, stderr = self.proc.communicate(timeout=TIMEOUT_COMPLETION)
-        rc = self.proc.returncode
+        rc = self.proc.wait(timeout=TIMEOUT_COMPLETION)
+        stderr = (
+            self.stderr_log.read_text(encoding="utf-8", errors="replace")
+            if self.stderr_log.is_file()
+            else ""
+        )
         assert rc == EXIT_CODE_SUCCESS, (
             f"Expected exit code {EXIT_CODE_SUCCESS} on completion, got {rc}: {stderr}"
         )
@@ -164,11 +199,6 @@ class OnboardingWizard:
         """Terminate the wizard process tree if it is still running."""
         if self.proc.poll() is None:
             terminate_process_tree(self.proc)
-        elif self.proc.stderr is not None:
-            try:
-                self.proc.stderr.close()
-            except (OSError, ValueError):
-                pass
 
     def __enter__(self) -> OnboardingWizard:
         return self
