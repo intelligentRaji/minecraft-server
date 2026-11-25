@@ -37,12 +37,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
       - name: Install root lint tooling
-        run: uv sync --locked --group dev
+        run: uv sync --locked --group dev --python 3.12
       - name: Install subproject dependencies for type resolution
         run: |
-          uv --directory modsync_api sync --locked --group dev
-          uv --directory client sync --locked --group dev
-          uv --directory client-e2e sync --locked
+          uv --directory modsync_api sync --locked --group dev --python 3.12
+          uv --directory client sync --locked --group dev --python 3.12
+          uv --directory client-e2e sync --locked --python 3.12
       - name: Run Pyright type checks
         run: uv run --no-sync pyright
