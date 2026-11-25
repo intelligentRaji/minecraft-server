@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
+from typing import TypeGuard
 
 
-def is_strict_int(value: object) -> bool:
+def is_strict_int(value: object) -> TypeGuard[int]:
     """Return True if `value` is an int and not a bool."""
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def is_finite_number(value: object) -> bool:
+def is_finite_number(value: object) -> TypeGuard[int | float]:
     """Return True if `value` is a finite int or float (and not a bool)."""
     return (
         isinstance(value, (int, float))

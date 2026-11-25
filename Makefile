@@ -35,8 +35,9 @@ status: ## Show container status
 sync-dry: ## Preview server mod synchronization without modifying files
 	python3 server/sync_mods.py --dry-run --skip-api
 
-lint: ## Run Ruff linter across the repository
+lint: ## Run Ruff and Pyright checks across the repository
 	uv run ruff check .
+	uv run pyright
 
 test: ## Run server, CI, modsync-api, and client unit tests
 	python3 -m unittest discover -s server -p "test_sync*.py"

@@ -11,7 +11,10 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from _bridge import SyncModuleProtocol
 
 MOD_DIR = Path(__file__).resolve().parent
 SYNC_SCRIPT = MOD_DIR / "sync.py"
@@ -75,13 +78,13 @@ def _format_toml_value(value: object) -> str:
     return repr(value)
 
 
-def load_sync_module() -> ModuleType:
+def load_sync_module() -> SyncModuleProtocol:
     spec = importlib.util.spec_from_file_location("terrablender_sync", SYNC_SCRIPT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {SYNC_SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast("SyncModuleProtocol", module)
 
 
 class TerraBlenderSyncTest(unittest.TestCase):

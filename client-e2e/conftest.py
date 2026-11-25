@@ -331,7 +331,7 @@ def process_spawner(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[
             effective_stdout = out_handle
             opened.append(out_handle)
             tracked_logs.append(out_path)
-        elif hasattr(effective_stdout, "name"):
+        elif not isinstance(effective_stdout, int) and hasattr(effective_stdout, "name"):
             tracked_logs.append(Path(str(effective_stdout.name)))
 
         if effective_stderr is None:
@@ -340,7 +340,7 @@ def process_spawner(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[
             effective_stderr = err_handle
             opened.append(err_handle)
             tracked_logs.append(err_path)
-        elif hasattr(effective_stderr, "name"):
+        elif not isinstance(effective_stderr, int) and hasattr(effective_stderr, "name"):
             tracked_logs.append(Path(str(effective_stderr.name)))
 
         try:

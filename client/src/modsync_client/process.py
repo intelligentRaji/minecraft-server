@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import psutil
 
 MC_CMDLINE_MARKERS = (
@@ -14,10 +16,11 @@ MC_CMDLINE_MARKERS = (
 
 
 def _is_java_minecraft_process(proc: psutil.Process) -> bool:
-    name = (proc.info.get("name") or "").lower()
+    info: dict[str, Any] = getattr(proc, "info", None) or proc.as_dict(attrs=["name", "cmdline"])
+    name = (info.get("name") or "").lower()
     if "java" not in name:
         return False
-    cmdline = " ".join(proc.info.get("cmdline") or []).lower()
+    cmdline = " ".join(info.get("cmdline") or []).lower()
     return any(marker in cmdline for marker in MC_CMDLINE_MARKERS)
 
 

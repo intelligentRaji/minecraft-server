@@ -119,7 +119,7 @@ def validate_jei_ini(data: object, rel_path: str) -> list[str]:
 def _extract_permissions_map(raw_text: str) -> dict[str, str]:
     """Parse raw INI text and extract the [permissions] key-value pairs."""
     parser = configparser.ConfigParser()
-    parser.optionxform = str
+    parser.optionxform = lambda optionstr: optionstr
     parser.read_string(raw_text)
     if "permissions" in parser:
         return dict(parser.items("permissions"))

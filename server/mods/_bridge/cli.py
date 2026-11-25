@@ -4,7 +4,34 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from pathlib import Path
+from typing import Protocol
+
+
+class SyncModuleProtocol(Protocol):
+    """Typed interface for dynamically imported `mods/<slug>/sync.py` modules."""
+
+    CONFIGS_DIR: Path
+    DATA_DIR: Path
+
+    def validate_configs(self) -> dict[str, bytes]: ...
+
+    def apply_configs(self, loaded_bytes: dict[str, bytes], dry_run: bool) -> tuple[int, int]: ...
+
+    def main(self, argv: list[str] | None = None) -> int: ...
+
+
+class TargetDirSyncModuleProtocol(Protocol):
+    """Typed interface for mod sync modules placing files directly under `TARGET_DIR`."""
+
+    CONFIGS_DIR: Path
+    TARGET_DIR: Path
+    STATIC_FILES: tuple[str, ...]
+
+    def validate_configs(self) -> Mapping[str, object]: ...
+
+    def main(self, argv: list[str] | None = None) -> int: ...
 
 
 def run_sync_cli[T](

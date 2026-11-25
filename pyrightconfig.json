@@ -1,6 +1,15 @@
 {
   "pythonVersion": "3.12",
   "pythonPlatform": "All",
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "server/data",
+    "client/build",
+    "client/dist",
+    "**/.venv"
+  ],
   "executionEnvironments": [
     {
       "root": "modsync_api",
@@ -20,6 +29,8 @@
       "root": "client-e2e",
       "extraPaths": [
         "client-e2e",
+        "client/src",
+        "client/.venv/lib/python3.12/site-packages",
         "client-e2e/.venv/lib/python3.12/site-packages"
       ]
     },
