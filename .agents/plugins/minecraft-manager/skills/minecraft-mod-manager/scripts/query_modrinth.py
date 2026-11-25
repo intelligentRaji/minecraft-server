@@ -3,9 +3,11 @@
 query_modrinth.py - CLI tool to inspect and optionally download Forge 1.20.1 mods from Modrinth.
 """
 
-import sys
-import json
+from __future__ import annotations
+
 import argparse
+import json
+import sys
 import urllib.request
 from pathlib import Path
 
@@ -37,7 +39,7 @@ def inspect_mod(slug: str, game_version: str = "1.20.1", loader: str = "forge") 
         return None
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Query and inspect mods from Modrinth API.")
     parser.add_argument("slug", help="Modrinth project slug (e.g. chunky, embeddium, ferrite-core)")
     parser.add_argument("--version", default="1.20.1", help="Minecraft game version (default: 1.20.1)")
@@ -67,7 +69,7 @@ def main():
         else:
             print(f"    [+] Downloading to: {dest}...")
             urllib.request.urlretrieve(result["url"], dest)
-            print(f"    [+] Download complete!")
+            print("    [+] Download complete!")
 
 
 if __name__ == "__main__":

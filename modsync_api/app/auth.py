@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 
@@ -47,8 +48,8 @@ def verify_http_token(
 
 
 def require_client_auth(
-    config: Config = Depends(get_config),
-    authorization: str | None = Header(default=None),
+    config: Annotated[Config, Depends(get_config)],
+    authorization: Annotated[str | None, Header()] = None,
 ) -> None:
     verify_http_token(
         extract_bearer_token(authorization),
@@ -60,8 +61,8 @@ def require_client_auth(
 
 
 def require_admin_auth(
-    config: Config = Depends(get_config),
-    x_admin_token: str | None = Header(default=None),
+    config: Annotated[Config, Depends(get_config)],
+    x_admin_token: Annotated[str | None, Header()] = None,
 ) -> None:
     verify_http_token(
         x_admin_token,

@@ -55,7 +55,7 @@ class ConnectionManager:
         )
         notified = 0
         stale: list[WebSocket] = []
-        for ws, outcome in zip(targets, results):
+        for ws, outcome in zip(targets, results, strict=True):
             if isinstance(outcome, BaseException):
                 stale.append(ws)
             else:

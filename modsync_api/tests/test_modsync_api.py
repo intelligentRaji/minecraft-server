@@ -37,9 +37,11 @@ def client() -> Iterator[TestClient]:
 
 
 def _assert_ws_rejected(client: TestClient, path: str = "/ws", headers: dict[str, str] | None = None) -> None:
-    with pytest.raises(WebSocketDisconnect) as exc_info:
-        with client.websocket_connect(path, headers=headers or {}):
-            pass
+    with (
+        pytest.raises(WebSocketDisconnect) as exc_info,
+        client.websocket_connect(path, headers=headers or {}),
+    ):
+        pass
     assert exc_info.value.code == status.WS_1008_POLICY_VIOLATION
 
 
@@ -65,7 +67,8 @@ def test_manifest_etag_and_mod_download(client: TestClient) -> None:
     assert jar_resp.headers["etag"] == f'"{hashlib.sha256(b"create-jar-payload").hexdigest()}"'
 
     # server-only mods must never be served
-    assert client.get("/api/mods/server-only/luckperms.jar", headers=CLIENT_HEADERS).status_code == status.HTTP_404_NOT_FOUND
+    server_only_resp = client.get("/api/mods/server-only/luckperms.jar", headers=CLIENT_HEADERS)
+    assert server_only_resp.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.parametrize(
@@ -105,8 +108,10 @@ def test_websocket_auth_ping_and_reload_broadcast(client: TestClient, modpack_di
         initial_version = hello["version"]
 
         assert client.post("/api/reload").status_code == status.HTTP_401_UNAUTHORIZED
-        assert client.post("/api/reload", headers={"X-Admin-Token": "wrong"}).status_code == status.HTTP_401_UNAUTHORIZED
-        assert client.post("/api/reload", headers=[(b"x-admin-token", b"\xe9")]).status_code == status.HTTP_401_UNAUTHORIZED
+        bad_hdr_resp = client.post("/api/reload", headers={"X-Admin-Token": "wrong"})
+        assert bad_hdr_resp.status_code == status.HTTP_401_UNAUTHORIZED
+        invalid_bytes_resp = client.post("/api/reload", headers=[(b"x-admin-token", b"\xe9")])
+        assert invalid_bytes_resp.status_code == status.HTTP_401_UNAUTHORIZED
 
         # Unchanged reload reports changed=False and notifies 0 clients
         unchanged = client.post("/api/reload", headers=ADMIN_HEADERS)
@@ -147,7 +152,8 @@ def test_client_endpoints_fail_closed_without_client_token(monkeypatch: pytest.M
     monkeypatch.delenv("MODSYNC_CLIENT_TOKEN", raising=False)
     with TestClient(create_app()) as unconfigured_client:
         assert unconfigured_client.get("/api/manifest").status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-        assert unconfigured_client.get("/api/mods/server-client/create.jar").status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        dl_resp = unconfigured_client.get("/api/mods/server-client/create.jar")
+        assert dl_resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         _assert_ws_rejected(unconfigured_client)
 
 

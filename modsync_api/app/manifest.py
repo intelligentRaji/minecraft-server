@@ -7,7 +7,7 @@ import json
 import re
 import threading
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, get_args
 
@@ -181,7 +181,7 @@ class ManifestStore:
             manifest = Manifest(
                 version=version_hash,
                 recommended_version=recommended_hash,
-                generated_at=datetime.now(timezone.utc).isoformat(),
+                generated_at=datetime.now(UTC).isoformat(),
                 mods=sorted_mods,
             )
             self._current = manifest

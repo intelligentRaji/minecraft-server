@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 CONTAINER_NAME = "mc-forge-server"
 DEFAULT_TIMEOUT_SECONDS = 30

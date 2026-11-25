@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 
@@ -15,8 +15,8 @@ router = APIRouter()
 
 @router.get("/health")
 async def health(
-    store: ManifestStore = Depends(get_store),
-    manager: ConnectionManager = Depends(get_manager),
+    store: Annotated[ManifestStore, Depends(get_store)],
+    manager: Annotated[ConnectionManager, Depends(get_manager)],
 ) -> dict[str, Any]:
     manifest = store.current
     return {

@@ -104,7 +104,7 @@ def tag_exists(tag_name: str) -> bool:
     return res.returncode == 0
 
 
-def gh_api_json(endpoint: str) -> Any:
+def gh_api_json(endpoint: str) -> object:
     """Query the GitHub REST API via gh CLI and parse JSON."""
     res = subprocess.run(
         ["gh", "api", endpoint],
@@ -164,17 +164,24 @@ class GhCliGitHubClient:
         if status:
             query["status"] = status
         endpoint = f"repos/{repo}/actions/workflows/ci.yml/runs?{urlencode(query)}"
-        return list(gh_api_json(endpoint).get("workflow_runs", []))
+        payload = gh_api_json(endpoint)
+        assert isinstance(payload, dict)
+        return list(payload.get("workflow_runs", []))
 
     def get_run(self, repo: str, run_id: int) -> dict[str, Any]:
-        return dict(gh_api_json(f"repos/{repo}/actions/runs/{run_id}"))
+        payload = gh_api_json(f"repos/{repo}/actions/runs/{run_id}")
+        assert isinstance(payload, dict)
+        return dict(payload)
 
     def list_run_artifacts(self, repo: str, run_id: int) -> list[dict[str, Any]]:
         payload = gh_api_json(f"repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100")
+        assert isinstance(payload, dict)
         return list(payload.get("artifacts", []))
 
     def list_commit_pulls(self, repo: str, commit_sha: str) -> list[dict[str, Any]]:
-        return list(gh_api_json(f"repos/{repo}/commits/{commit_sha}/pulls"))
+        payload = gh_api_json(f"repos/{repo}/commits/{commit_sha}/pulls")
+        assert isinstance(payload, list)
+        return list(payload)
 
     def download_run_metadata(
         self,

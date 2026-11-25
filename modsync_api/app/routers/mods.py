@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import FileResponse, JSONResponse
@@ -27,8 +27,8 @@ def _format_etag(value: str) -> str:
 
 @router.get("/api/manifest", dependencies=[Depends(require_client_auth)])
 async def get_manifest(
-    if_none_match: str | None = Header(default=None),
-    store: ManifestStore = Depends(get_store),
+    store: Annotated[ManifestStore, Depends(get_store)],
+    if_none_match: Annotated[str | None, Header()] = None,
 ) -> Response:
     manifest = store.current
     etag_value = f"{manifest.version}-{manifest.recommended_version}"
@@ -50,8 +50,8 @@ async def get_manifest(
 async def download_mod(
     category: str,
     filename: str,
-    config: Config = Depends(get_config),
-    store: ManifestStore = Depends(get_store),
+    config: Annotated[Config, Depends(get_config)],
+    store: Annotated[ManifestStore, Depends(get_store)],
 ) -> FileResponse:
     jar_path = validate_jar_request(config.modpack_dir, category, filename)
     if jar_path is None:
@@ -72,8 +72,8 @@ async def download_mod(
 
 @router.post("/api/reload", dependencies=[Depends(require_admin_auth)])
 async def reload_manifest(
-    store: ManifestStore = Depends(get_store),
-    manager: ConnectionManager = Depends(get_manager),
+    store: Annotated[ManifestStore, Depends(get_store)],
+    manager: Annotated[ConnectionManager, Depends(get_manager)],
 ) -> dict[str, Any]:
     manifest, changed = await asyncio.to_thread(store.refresh)
     notified = 0
