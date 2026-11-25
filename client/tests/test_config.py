@@ -288,7 +288,7 @@ def test_parse_server_input(raw_input: str, expected: tuple[str, str | None]) ->
     ["", "   ", "modsync://connect", "modsync://connect?url=ftp://bad", "not-a-url"],
 )
 def test_parse_server_input_rejects_invalid_inputs(bad_input: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"(Server URL or invite link is required|Invalid )"):
         parse_server_input(bad_input)
 
 

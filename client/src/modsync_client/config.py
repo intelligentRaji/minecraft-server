@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-
 DEFAULT_POLL_FALLBACK_SECONDS = 300
 INVITE_URL_SCHEME = "modsync"
 HTTP_URL_SCHEMES = frozenset({"http", "https"})

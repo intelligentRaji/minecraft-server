@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import sys
 import threading
 import webbrowser
 from pathlib import Path
-from typing import Any
 
 import pystray
 
@@ -38,8 +38,8 @@ MAX_TRAY_TITLE_LENGTH = 120
 BG_THREAD_JOIN_TIMEOUT_SECONDS = 5
 
 __all__ = [
-    "ModSyncTrayApp",
     "STATUS_COLORS",
+    "ModSyncTrayApp",
     "is_windows_autostart_enabled",
     "make_badge_icon",
     "prompt_config_gui",
@@ -92,10 +92,8 @@ class ModSyncTrayApp:
         if self._last_notified_version == notify_key:
             return
         self._last_notified_version = notify_key
-        try:
+        with contextlib.suppress(Exception):
             self.icon.notify(message, "ModSync")
-        except Exception:
-            pass
 
     def _on_status_update(
         self,
@@ -114,23 +112,23 @@ class ModSyncTrayApp:
         self.icon.update_menu()
         self._notify_if_changed(message, result)
 
-    def _on_sync_now(self, _icon: Any, _item: Any) -> None:
+    def _on_sync_now(self, _icon: object, _item: object) -> None:
         self.service.request_sync()
 
-    def _on_install_recommended(self, _icon: Any, _item: Any) -> None:
+    def _on_install_recommended(self, _icon: object, _item: object) -> None:
         self.service.request_install_recommended()
 
-    def _on_open_folder(self, _icon: Any, _item: Any) -> None:
+    def _on_open_folder(self, _icon: object, _item: object) -> None:
         open_folder(self.config.mods_path)
 
-    def _on_configure(self, _icon: Any, _item: Any) -> None:
+    def _on_configure(self, _icon: object, _item: object) -> None:
         updated = prompt_config_gui(self.config)
         if updated is not None:
             self.config = updated
             save_config(updated, self.config_path)
             self.service.reconfigure(updated)
 
-    def _on_toggle_autostart(self, _icon: Any, _item: Any) -> None:
+    def _on_toggle_autostart(self, _icon: object, _item: object) -> None:
         set_windows_autostart(not is_windows_autostart_enabled())
         self.icon.update_menu()
 
@@ -194,13 +192,11 @@ class ModSyncTrayApp:
             return
 
         if not interactive:
-            try:
+            with contextlib.suppress(Exception):
                 self.icon.notify(
                     f"ModSync v{update.version} is available. Click 'Check for Updates...' to install.",
                     "ModSync Update",
                 )
-            except Exception:
-                pass
             return
 
         if not self._prompt_update_dialog(update):
@@ -226,7 +222,7 @@ class ModSyncTrayApp:
         self.service.stop()
         self.icon.stop()
 
-    def _on_check_updates(self, _icon: Any, _item: Any) -> None:
+    def _on_check_updates(self, _icon: object, _item: object) -> None:
         threading.Thread(
             target=self._run_update_check,
             kwargs={"interactive": True},
@@ -234,7 +230,7 @@ class ModSyncTrayApp:
             name="modsync-update-check",
         ).start()
 
-    def _on_quit(self, _icon: Any, _item: Any) -> None:
+    def _on_quit(self, _icon: object, _item: object) -> None:
         self.service.stop()
         self.icon.stop()
 

@@ -1,4 +1,4 @@
-.PHONY: help up down restart reload logs modsync-logs status sync-dry test client-build client-e2e invite-link chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
+.PHONY: help up down restart reload logs modsync-logs status sync-dry lint test client-build client-e2e invite-link chunky-progress chunky-start chunky-pause chunky-continue chunky-cancel chunky-selection
 
 COMPOSE := docker compose
 
@@ -34,6 +34,9 @@ status: ## Show container status
 
 sync-dry: ## Preview server mod synchronization without modifying files
 	python3 server/sync_mods.py --dry-run --skip-api
+
+lint: ## Run Ruff linter across the repository
+	uv run ruff check .
 
 test: ## Run server, CI, modsync-api, and client unit tests
 	python3 -m unittest discover -s server -p "test_sync*.py"

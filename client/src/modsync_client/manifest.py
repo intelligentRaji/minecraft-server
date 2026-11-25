@@ -46,7 +46,7 @@ def compute_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _parse_mod_entry(item: Any) -> RemoteMod:
+def _parse_mod_entry(item: object) -> RemoteMod:
     if not isinstance(item, dict):
         raise ValueError("Invalid manifest entry: expected object")
     filename = str(item.get("filename", ""))

@@ -6,7 +6,7 @@ import importlib
 import sys
 import threading
 import types
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,7 @@ from modsync_client import __version__
 from modsync_client.config import Config
 from modsync_client.syncer import SyncResult, SyncStatus
 from modsync_client.updater import UpdateInfo
+from modsync_client.ws_client import StatusCallback
 
 
 class FakeMenuItem:
@@ -23,17 +24,17 @@ class FakeMenuItem:
 
     def __init__(
         self,
-        text: Any,
-        action: Any,
-        checked: Any = None,
-        enabled: Any = True,
+        text: str | Callable[[FakeMenuItem], str],
+        action: Callable[[object, FakeMenuItem], object] | None,
+        checked: bool | Callable[[FakeMenuItem], bool] | None = None,
+        enabled: bool | Callable[[FakeMenuItem], bool] = True,
     ) -> None:
         self._text = text
         self.action = action
         self._checked = checked
         self._enabled = enabled
 
-    def __call__(self, icon: Any = None) -> None:
+    def __call__(self, icon: object = None) -> None:
         if callable(self.action):
             self.action(icon, self)
 
@@ -60,7 +61,13 @@ class FakeMenu:
 class FakeIcon:
     """Minimal pystray.Icon double capturing menu refreshes, notifications, and lifecycle."""
 
-    def __init__(self, name: str, icon: Any, title: str, menu: FakeMenu | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        icon: object,
+        title: str,
+        menu: FakeMenu | None = None,
+    ) -> None:
         self.name = name
         self.icon = icon
         self.title = title
@@ -76,7 +83,7 @@ class FakeIcon:
     def notify(self, message: str, title: str | None = None) -> None:
         self.notifications.append((message, title or self.title))
 
-    def run(self, setup: Any = None) -> None:
+    def run(self, setup: Callable[[FakeIcon], object] | None = None) -> None:
         self.run_calls += 1
         if setup is not None:
             setup(self)
@@ -92,7 +99,7 @@ class FakeService:
         self,
         config: Config,
         *,
-        on_status: Any = None,
+        on_status: StatusCallback | None = None,
         staging_dir: Path | None = None,
     ) -> None:
         self.config = config
@@ -121,18 +128,7 @@ class FakeService:
         return None
 
 
-def _sample_update(asset_name: str = "ModSync-linux", html_url: str = "https://example.test/release") -> UpdateInfo:
-    return UpdateInfo(
-        version="9.9.9",
-        tag_name="client-v9.9.9",
-        html_url=html_url,
-        asset_name=asset_name,
-        download_url=f"https://example.test/{asset_name}",
-        expected_sha256="a" * 64,
-    )
-
-
-def _find_menu_item(app: Any, label: str) -> FakeMenuItem:
+def _find_menu_item(app: Any, label: str) -> FakeMenuItem:  # noqa: ANN401
     for item in app.icon.menu.items:
         if item.text == label:
             return item
@@ -161,7 +157,7 @@ def tray_env(
         cfg = Config(server_url="https://mods.example", mods_dir=str(tmp_path / "mods"))
         cfg_path = tmp_path / "config.json"
 
-        def _make_app() -> Any:
+        def _make_app() -> Any:  # noqa: ANN401
             return tray_mod.ModSyncTrayApp(cfg, cfg_path)
 
         yield tray_mod, _make_app, cfg, cfg_path
@@ -463,7 +459,7 @@ def test_run_starts_worker_and_startup_update_check_then_stops_service_on_exit(
     worker_ran = threading.Event()
     update_checked = threading.Event()
 
-    async def _fake_service_run(_self: Any) -> None:
+    async def _fake_service_run(_self: FakeService) -> None:
         worker_ran.set()
 
     monkeypatch.setattr(FakeService, "run", _fake_service_run)
@@ -494,7 +490,8 @@ def test_run_stops_and_joins_service_even_when_icon_run_raises(
         lambda _ver: update_checked.set() or None,
     )
     app = make_app()
-    def _fail_run(_setup: Any = None) -> None:
+
+    def _fail_run(_setup: object = None) -> None:
         raise RuntimeError("tray backend failed")
 
     monkeypatch.setattr(app.icon, "run", _fail_run)
@@ -509,10 +506,11 @@ def test_run_stops_and_joins_service_even_when_icon_run_raises(
 def test_run_update_check_non_interactive_notifies_when_update_available(
     monkeypatch: pytest.MonkeyPatch,
     tray_env: tuple[Any, Any, Config, Path],
+    make_sample_update: Callable[..., UpdateInfo],
 ) -> None:
     tray_mod, make_app, _, _ = tray_env
     app = make_app()
-    monkeypatch.setattr(tray_mod, "check_for_update", lambda _ver: _sample_update())
+    monkeypatch.setattr(tray_mod, "check_for_update", lambda _ver: make_sample_update())
     monkeypatch.setattr(
         app,
         "_prompt_update_dialog",
@@ -622,12 +620,13 @@ def test_run_update_check_interactive_shows_error_on_check_failure(
 def test_run_update_check_interactive_declined_prompt_does_nothing(
     monkeypatch: pytest.MonkeyPatch,
     tray_env: tuple[Any, Any, Config, Path],
+    make_sample_update: Callable[..., UpdateInfo],
 ) -> None:
     tray_mod, make_app, _, _ = tray_env
     opened_urls: list[str] = []
     downloaded: list[UpdateInfo] = []
     app = make_app()
-    monkeypatch.setattr(tray_mod, "check_for_update", lambda _ver: _sample_update())
+    monkeypatch.setattr(tray_mod, "check_for_update", lambda _ver: make_sample_update())
     monkeypatch.setattr(app, "_prompt_update_dialog", lambda _upd: False)
     monkeypatch.setattr(tray_mod.webbrowser, "open", opened_urls.append)
     monkeypatch.setattr(tray_mod, "download_and_apply_update", downloaded.append)
@@ -642,10 +641,11 @@ def test_run_update_check_interactive_declined_prompt_does_nothing(
 def test_run_update_check_interactive_non_frozen_confirmed_opens_release_url(
     monkeypatch: pytest.MonkeyPatch,
     tray_env: tuple[Any, Any, Config, Path],
+    make_sample_update: Callable[..., UpdateInfo],
 ) -> None:
     tray_mod, make_app, _, _ = tray_env
     opened_urls: list[str] = []
-    update = _sample_update(html_url="https://github.com/org/repo/releases/tag/client-v9.9.9")
+    update = make_sample_update(html_url="https://github.com/org/repo/releases/tag/client-v9.9.9")
     app = make_app()
     monkeypatch.setattr(tray_mod, "check_for_update", lambda _ver: update)
     monkeypatch.setattr(app, "_prompt_update_dialog", lambda _upd: True)
@@ -660,9 +660,10 @@ def test_run_update_check_interactive_non_frozen_confirmed_opens_release_url(
 def test_run_update_check_interactive_frozen_confirmed_installs_and_relaunches(
     monkeypatch: pytest.MonkeyPatch,
     tray_env: tuple[Any, Any, Config, Path],
+    make_sample_update: Callable[..., UpdateInfo],
 ) -> None:
     tray_mod, make_app, _, _ = tray_env
-    update = _sample_update(asset_name="ModSync.exe")
+    update = make_sample_update(asset_name="ModSync.exe")
     downloaded: list[UpdateInfo] = []
     relaunched: list[bool] = []
     app = make_app()
@@ -683,9 +684,10 @@ def test_run_update_check_interactive_frozen_confirmed_installs_and_relaunches(
 def test_run_update_check_interactive_frozen_download_failure_shows_error_dialog(
     monkeypatch: pytest.MonkeyPatch,
     tray_env: tuple[Any, Any, Config, Path],
+    make_sample_update: Callable[..., UpdateInfo],
 ) -> None:
     tray_mod, make_app, _, _ = tray_env
-    update = _sample_update(asset_name="ModSync.exe")
+    update = make_sample_update(asset_name="ModSync.exe")
     dialogs: list[tuple[str, str, bool]] = []
     app = make_app()
 

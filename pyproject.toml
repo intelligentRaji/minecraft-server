@@ -1,0 +1,14 @@
+[project]
+name = "minecraft-server-tooling"
+version = "0.1.0"
+description = "Root developer tooling (Ruff) for the minecraft-server monorepo"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "ruff>=0.15.0,<1.0.0",
+]
+
+[tool.uv]
+package = false

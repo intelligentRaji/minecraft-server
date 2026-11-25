@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
@@ -206,10 +207,8 @@ def cleanup_old_binary(executable_path: Path | None = None) -> None:
     if target is None:
         return
     old_path = target.with_name(f"{target.name}.old")
-    try:
+    with contextlib.suppress(OSError):
         old_path.unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 def download_and_apply_update(

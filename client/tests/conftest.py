@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+
+from modsync_client.updater import UpdateInfo
 
 _CLEARED_ENV_VARS = (
     "MODSYNC_SERVER_URL",
@@ -47,3 +50,23 @@ def mods_dir(tmp_path: Path) -> Path:
 def staging_dir(tmp_path: Path) -> Path:
     """Return an isolated temporary staging directory path."""
     return tmp_path / "staging"
+
+
+@pytest.fixture
+def make_sample_update() -> Callable[..., UpdateInfo]:
+    """Return a factory building deterministic UpdateInfo objects for update tests."""
+
+    def _build(
+        asset_name: str = "ModSync-linux",
+        html_url: str = "https://example.test/release",
+    ) -> UpdateInfo:
+        return UpdateInfo(
+            version="9.9.9",
+            tag_name="client-v9.9.9",
+            html_url=html_url,
+            asset_name=asset_name,
+            download_url=f"https://example.test/{asset_name}",
+            expected_sha256="a" * 64,
+        )
+
+    return _build

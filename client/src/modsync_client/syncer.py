@@ -8,10 +8,10 @@ import os
 import shutil
 import tomllib
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Callable
 from urllib.parse import urljoin
 
 from .manifest import (
@@ -36,9 +36,8 @@ MANAGED_STATE_FILENAME = ".modsync-managed.json"
 def _extract_forge_mod_ids(jar_path: Path) -> frozenset[str]:
     """Read declared Forge modId values from META-INF/mods.toml inside a jar."""
     try:
-        with zipfile.ZipFile(jar_path) as archive:
-            with archive.open("META-INF/mods.toml") as handle:
-                data = tomllib.loads(handle.read().decode("utf-8", errors="replace"))
+        with zipfile.ZipFile(jar_path) as archive, archive.open("META-INF/mods.toml") as handle:
+            data = tomllib.loads(handle.read().decode("utf-8", errors="replace"))
     except (OSError, zipfile.BadZipFile, KeyError, tomllib.TOMLDecodeError):
         return frozenset()
     mods = data.get("mods")
@@ -50,17 +49,18 @@ def _extract_forge_mod_ids(jar_path: Path) -> frozenset[str]:
         if isinstance(entry, dict) and entry.get("modId")
     )
 
+
 __all__ = [
     "CLIENT_ONLY_CATEGORY",
     "HASH_CHUNK_SIZE",
+    "MC_CMDLINE_MARKERS",
+    "SAFE_JAR_NAME_RE",
+    "SERVER_CLIENT_CATEGORY",
     "HttpTransport",
     "HttpxTransport",
-    "MC_CMDLINE_MARKERS",
     "ModSyncer",
     "RemoteManifest",
     "RemoteMod",
-    "SAFE_JAR_NAME_RE",
-    "SERVER_CLIENT_CATEGORY",
     "SyncResult",
     "SyncStatus",
     "compute_sha256",
@@ -69,7 +69,7 @@ __all__ = [
 ]
 
 
-class SyncStatus(str, Enum):
+class SyncStatus(StrEnum):
     IDLE = "idle"
     SYNCING = "syncing"
     SYNCED = "synced"
