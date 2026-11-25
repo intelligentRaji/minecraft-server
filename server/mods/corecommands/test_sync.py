@@ -12,7 +12,10 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from _bridge import SyncModuleProtocol
 
 MOD_DIR = Path(__file__).resolve().parent
 SYNC_SCRIPT = MOD_DIR / "sync.py"
@@ -31,13 +34,13 @@ RUNTIME_STATE_FILES: tuple[str, ...] = (
 )
 
 
-def load_sync_module() -> ModuleType:
+def load_sync_module() -> SyncModuleProtocol:
     spec = importlib.util.spec_from_file_location("corecommands_sync", SYNC_SCRIPT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {SYNC_SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast("SyncModuleProtocol", module)
 
 
 class CoreCommandsSyncTest(unittest.TestCase):
@@ -66,7 +69,7 @@ class CoreCommandsSyncTest(unittest.TestCase):
         self.assertEqual(set(loaded.keys()), {"config.json", "rules.json"})
 
     def test_initial_placement_mode_preservation_and_idempotency(self) -> None:
-        """First run places static files; second run is idempotent; updates preserve file mode and leave runtime files untouched."""
+        """First run places static files, repeats cleanly, preserves mode, and leaves runtime files untouched."""
         cc_dir = self.data_dir / "config" / "corecommands"
         cc_dir.mkdir(parents=True, exist_ok=True)
         homes_file = cc_dir / "homes.json"

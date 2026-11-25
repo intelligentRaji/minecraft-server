@@ -137,7 +137,7 @@ UNIT_FLOAT_KEYS: tuple[tuple[str, str], ...] = (
 
 
 def _check_table_keys(
-    table: Any,
+    table: object,
     expected_keys: tuple[str, ...],
     table_label: str,
 ) -> tuple[dict[str, Any] | None, list[str]]:
@@ -197,7 +197,7 @@ def _validate_unit_float(table: dict[str, Any], table_label: str, key: str) -> l
     return []
 
 
-def _validate_resource_location(value: Any, field_path: str) -> list[str]:
+def _validate_resource_location(value: object, field_path: str) -> list[str]:
     if not isinstance(value, str) or not RESOURCE_LOCATION_RE.match(value):
         return [
             f"{TARGET_REL_PATH} invariant violation: '{field_path}' must be a valid Minecraft "
@@ -207,7 +207,7 @@ def _validate_resource_location(value: Any, field_path: str) -> list[str]:
     return []
 
 
-def validate_farmersdelight_common(data: Any) -> list[str]:
+def validate_farmersdelight_common(data: object) -> list[str]:
     """Validate schema, types, and invariants for `config/farmersdelight-common.toml`."""
     root, errors = _check_table_keys(data, tuple(EXPECTED_TABLES.keys()), "root")
     if root is None:

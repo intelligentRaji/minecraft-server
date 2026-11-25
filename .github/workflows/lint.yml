@@ -1,0 +1,50 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - "**"
+      - "!main"
+  pull_request:
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Install lint tooling
+        run: uv sync --locked --group dev
+      - name: Run Ruff lint checks
+        run: uv run --no-sync ruff check .
+
+  pyright:
+    name: Pyright
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - name: Install root lint tooling
+        run: uv sync --locked --group dev --python 3.12
+      - name: Install subproject dependencies for type resolution
+        run: |
+          uv --directory modsync_api sync --locked --group dev --python 3.12
+          uv --directory client sync --locked --group dev --python 3.12
+          uv --directory client-e2e sync --locked --python 3.12
+      - name: Run Pyright type checks
+        run: uv run --no-sync pyright

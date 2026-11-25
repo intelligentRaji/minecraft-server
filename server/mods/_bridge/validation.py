@@ -33,7 +33,7 @@ def _parse_static_config(rel: str, raw_text: str) -> tuple[Any, str | None]:
     if lower.endswith(".ini"):
         try:
             parser = configparser.ConfigParser()
-            parser.optionxform = str
+            parser.optionxform = lambda optionstr: optionstr
             parser.read_string(raw_text)
             parsed_ini: dict[str, dict[str, str]] = {}
             if parser.defaults():

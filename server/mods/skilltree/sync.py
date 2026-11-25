@@ -24,10 +24,12 @@ if str(MODS_DIR) not in sys.path:
 from _bridge import (  # noqa: E402
     DEFAULT_FORBIDDEN_SUFFIXES,
     apply_static_files,
-    is_finite_number as _is_finite_number,
     is_strict_int,
     run_sync_cli,
     validate_static_configs,
+)
+from _bridge import (  # noqa: E402
+    is_finite_number as _is_finite_number,
 )
 
 REPO_ROOT = MODS_DIR.parent

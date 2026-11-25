@@ -12,19 +12,22 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from _bridge import TargetDirSyncModuleProtocol
 
 MOD_DIR = Path(__file__).resolve().parent
 SYNC_SCRIPT = MOD_DIR / "sync.py"
 
 
-def load_sync_module() -> ModuleType:
+def load_sync_module() -> TargetDirSyncModuleProtocol:
     spec = importlib.util.spec_from_file_location("luckperms_sync", SYNC_SCRIPT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {SYNC_SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast("TargetDirSyncModuleProtocol", module)
 
 
 class LuckPermsSyncTest(unittest.TestCase):
@@ -185,9 +188,17 @@ class LuckPermsSyncTest(unittest.TestCase):
 
         cases = [
             ('  password = ""', '  password = "supersecret"', "data.password"),
-            ('  mongodb-connection-uri = ""', '  mongodb-connection-uri = "mongodb://user:pass@host/db"', "data.mongodb-connection-uri"),
+            (
+                '  mongodb-connection-uri = ""',
+                '  mongodb-connection-uri = "mongodb://user:pass@host/db"',
+                "data.mongodb-connection-uri",
+            ),
             ('  password = "guest"', '  password = "custom-rabbit-pass"', "rabbitmq.password"),
-            ('  enabled = false\n  address = "localhost"\n  vhost = "/"', '  enabled = true\n  address = "localhost"\n  vhost = "/"', "rabbitmq.password"),
+            (
+                '  enabled = false\n  address = "localhost"\n  vhost = "/"',
+                '  enabled = true\n  address = "localhost"\n  vhost = "/"',
+                "rabbitmq.password",
+            ),
         ]
         for old, new, expected_msg in cases:
             self.assertIn(old, orig)

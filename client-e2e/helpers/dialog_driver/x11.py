@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 from ..png import write_rgb_png
 from ..polling import FatalPollError, get_process_tree_pids, terminate_process_tree, wait_until
@@ -19,6 +19,9 @@ from .base import (
     BaseDialogDriver,
     DialogWindow,
 )
+
+if TYPE_CHECKING:
+    from Xlib.display import Display
 
 ENV_DISPLAY = "DISPLAY"
 XVFB_DISPLAY_MIN = 95
@@ -88,7 +91,7 @@ class X11DialogDriver(BaseDialogDriver):
             driver.close()
             raise
 
-    def _open_display(self) -> Any:
+    def _open_display(self) -> Display:
         from Xlib import display as xdisplay
 
         return xdisplay.Display(self.display)
@@ -268,7 +271,7 @@ class X11DialogDriver(BaseDialogDriver):
             timeout=TIMEOUT_PROC_WAIT,
         )
 
-    def _get_wm_class(self, dpy: Any, wid: int) -> str:
+    def _get_wm_class(self, dpy: Display, wid: int) -> str:
         from Xlib.error import XError
 
         try:

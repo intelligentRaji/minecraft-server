@@ -3,9 +3,11 @@
 trash_drive.py - Trash specific files or prune stale mods from Google Drive (minecraft-server/mods/).
 """
 
-import sys
+from __future__ import annotations
+
 import argparse
-from pathlib import Path
+import sys
+
 from gdrive_utils import GDriveClient, find_modpack_dir
 
 MODPACK_DIR = find_modpack_dir()
@@ -60,7 +62,7 @@ def prune_all_categories(client: GDriveClient, mods_folder_id: str, dry_run: boo
     return trashed_count
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Trash specific files or prune stale mods from Google Drive.")
     parser.add_argument("jars", nargs="*", help="Specific jar file names to trash on Google Drive")
     parser.add_argument("--prune", action="store_true", help="Prune all files on Drive missing from local modpack/")

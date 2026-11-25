@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
 
 MOD_DIR = Path(__file__).resolve().parent
 MODS_DIR = MOD_DIR.parent
@@ -149,7 +148,7 @@ TABLE_SCHEMAS: dict[str, dict[str, str]] = {
 }
 
 
-def _validate_field(table_name: str, key: str, value: Any, kind: str) -> str | None:
+def _validate_field(table_name: str, key: str, value: object, kind: str) -> str | None:
     """Validate a single Vanilla Backport config field and return an explanatory error or None."""
     fq_key = f'["{table_name}"].{key}'
 
@@ -220,7 +219,7 @@ def _validate_field(table_name: str, key: str, value: Any, kind: str) -> str | N
     raise AssertionError(f"Unhandled schema kind: {kind!r}")
 
 
-def validate_vanillabackport_common(data: Any) -> list[str]:
+def validate_vanillabackport_common(data: object) -> list[str]:
     """Validate schema, types, ranges, and cross-key invariants for `config/vanillabackport-common.toml`."""
     if not isinstance(data, dict):
         return [

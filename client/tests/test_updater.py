@@ -75,7 +75,7 @@ def test_parse_version_valid(raw: str, expected: tuple[int, ...]) -> None:
 
 @pytest.mark.parametrize("bad_version", ["", "v", "client-v", "bad-tag", "1.2.beta"])
 def test_parse_version_invalid_raises(bad_version: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"(Empty version string|Unsupported version format)"):
         parse_version(bad_version)
 
 
@@ -294,13 +294,15 @@ def test_download_and_apply_update_sha256_mismatch_preserves_target_and_removes_
         expected_sha256="0" * 64,
     )
 
-    with httpx.Client(
-        transport=httpx.MockTransport(lambda _r: httpx.Response(200, content=b"tampered"))
-    ) as client:
-        with pytest.raises(ValueError, match="SHA-256 mismatch"):
-            download_and_apply_update(
-                bad_update, executable_path=target, platform="win32", client=client
-            )
+    with (
+        httpx.Client(
+            transport=httpx.MockTransport(lambda _r: httpx.Response(200, content=b"tampered"))
+        ) as client,
+        pytest.raises(ValueError, match="SHA-256 mismatch"),
+    ):
+        download_and_apply_update(
+            bad_update, executable_path=target, platform="win32", client=client
+        )
 
     assert target.read_bytes() == b"old-binary"
     assert not (tmp_path / ".ModSync.exe.new").exists()
@@ -319,13 +321,15 @@ def test_download_and_apply_update_http_error_preserves_target_and_removes_tmp(
         download_url="https://downloads.example/ModSync.exe",
     )
 
-    with httpx.Client(
-        transport=httpx.MockTransport(lambda _r: httpx.Response(502))
-    ) as client:
-        with pytest.raises(httpx.HTTPStatusError):
-            download_and_apply_update(
-                update, executable_path=target, platform="win32", client=client
-            )
+    with (
+        httpx.Client(
+            transport=httpx.MockTransport(lambda _r: httpx.Response(502))
+        ) as client,
+        pytest.raises(httpx.HTTPStatusError),
+    ):
+        download_and_apply_update(
+            update, executable_path=target, platform="win32", client=client
+        )
 
     assert target.read_bytes() == b"old-binary"
     assert not (tmp_path / ".ModSync.exe.new").exists()

@@ -47,7 +47,7 @@ def _require_host_installer_opt_in(request: pytest.FixtureRequest) -> None:
         )
 
 
-@pytest.fixture()
+@pytest.fixture
 def installed_modsync(
     modsync_installer: Path | None,
     tmp_path: Path,

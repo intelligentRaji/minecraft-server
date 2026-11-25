@@ -15,7 +15,7 @@ from helpers.client_cli import (
     TIMEOUT_SYNC,
     ModSyncCli,
 )
-from helpers.env import IsolatedClientEnv
+from helpers.env import IsolatedClientEnv, ProcessSpawner
 from helpers.fake_github import (
     DEFAULT_FAKE_RELEASE_VERSION,
     FakeGitHubReleasesServer,
@@ -402,7 +402,7 @@ def test_headless_staged_waiting_mc_auto_applies_on_minecraft_exit(
     client_cli: ModSyncCli,
     api_server: ModSyncTestServer,
     isolated_env: IsolatedClientEnv,
-    process_spawner,
+    process_spawner: ProcessSpawner,
     tmp_path: Path,
 ) -> None:
     """Headless daemon stages updates while Minecraft is running and auto-applies once it exits."""
@@ -444,7 +444,8 @@ def test_headless_staged_waiting_mc_auto_applies_on_minecraft_exit(
             _, waystones_sha = api_server.write_mod(DefaultMods.WAYSTONES_V1)
             api_server.remove_mod(DefaultMods.JEI_V1)
             changed, notified = api_server.reload()
-            assert changed is True and notified >= 1
+            assert changed is True
+            assert notified >= 1
 
             staged_waystones = staging_dir / DefaultMods.WAYSTONES_V1.filename
 

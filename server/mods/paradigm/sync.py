@@ -30,6 +30,8 @@ from _bridge import (  # noqa: E402
     run_sync_cli,
     scan_mapping_for_secrets,
     sha256_bytes,
+)
+from _bridge import (  # noqa: E402
     sync_static_file as bridge_sync_static_file,
 )
 
@@ -157,7 +159,8 @@ def validate_configs() -> dict[str, Any]:
         expected_keys = set(COOLDOWNS_STATIC_KEYS)
         if actual_keys != expected_keys:
             errors.append(
-                f"cooldowns.json key mismatch: expected only static keys {sorted(expected_keys)}, got {sorted(actual_keys)} "
+                f"cooldowns.json key mismatch: expected only static keys {sorted(expected_keys)}, "
+                f"got {sorted(actual_keys)} "
                 "(live per-player cooldown state must remain exclusively in data/config/paradigm/cooldowns.json)."
             )
     elif "cooldowns.json" in parsed:
@@ -175,7 +178,8 @@ def validate_configs() -> dict[str, Any]:
         expected_keys = set(HOLOGRAMS_STATIC_KEYS)
         if actual_keys != expected_keys:
             errors.append(
-                f"holograms.json key mismatch: expected only static keys {sorted(expected_keys)}, got {sorted(actual_keys)} "
+                f"holograms.json key mismatch: expected only static keys {sorted(expected_keys)}, "
+                f"got {sorted(actual_keys)} "
                 "(live in-world hologram definitions must remain exclusively in data/config/paradigm/holograms.json)."
             )
     elif "holograms.json" in parsed:

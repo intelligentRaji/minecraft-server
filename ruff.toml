@@ -1,0 +1,46 @@
+target-version = "py312"
+line-length = 120
+extend-include = ["*.spec"]
+extend-exclude = [
+  "server/data",
+  "client/build",
+  "client/dist",
+  ".venv",
+]
+
+[lint]
+select = [
+  "E",      # pycodestyle errors
+  "W",      # pycodestyle warnings
+  "F",      # pyflakes
+  "I",      # isort (import sorting + required future annotations)
+  "UP",     # pyupgrade (modern Python >=3.11 syntax & typing)
+  "B",      # flake8-bugbear
+  "SIM",    # flake8-simplify
+  "PT",     # flake8-pytest-style
+  "ANN",    # flake8-annotations
+  "TID251", # flake8-tidy-imports (banned-api)
+  "RUF",    # Ruff-specific rules
+]
+
+[lint.isort]
+known-first-party = [
+  "modsync_client",
+  "app",
+  "helpers",
+  "ci",
+  "_bridge",
+  "sync_mods",
+  "sync_mod_configurations",
+]
+required-imports = ["from __future__ import annotations"]
+
+[lint.flake8-tidy-imports.banned-api]
+"unittest.mock".msg = "Use pytest monkeypatch, lightweight fakes, or httpx.MockTransport instead of unittest.mock."
+
+[lint.per-file-ignores]
+"**/__init__.py" = ["I002"]
+"*.spec" = ["F821"]
+"server/**/*.py" = ["PT", "TID251"]
+"ci/**/*.py" = ["PT", "TID251"]
+"modsync_api/**/*.py" = ["PT001"]

@@ -66,7 +66,11 @@ class SyncModsTests(unittest.TestCase):
             patch.object(sync_mods, "DATA_MODS_DIR", self.data_mods_dir),
             patch.dict("os.environ", {"MODSYNC_ADMIN_TOKEN": "admin-secret"}),
             patch.object(sync_mods, "_check_modsync_health") as mock_health,
-            patch.object(sync_mods, "_trigger_modsync_reload", return_value={"version": "abc", "notified_clients": 2}) as mock_reload,
+            patch.object(
+                sync_mods,
+                "_trigger_modsync_reload",
+                return_value={"version": "abc", "notified_clients": 2},
+            ) as mock_reload,
         ):
             rc = sync_mods.main(["--modsync-url", "http://modsync-api:8080"])
 

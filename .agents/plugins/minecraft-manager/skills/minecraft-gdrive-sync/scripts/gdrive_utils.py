@@ -10,13 +10,13 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 def find_modpack_dir() -> Path:
     """Dynamically find the root modpack/ directory."""
     p = Path(__file__).resolve().parent
-    for parent in [p] + list(p.parents):
+    for parent in [p, *p.parents]:
         if (parent / "docker-compose.yml").is_file() and (parent / "modpack").is_dir():
             return parent / "modpack"
         if (parent / "server" / "modpack").is_dir():
@@ -27,24 +27,24 @@ def find_modpack_dir() -> Path:
 class GDriveClient:
     """Reusable Google Drive client wrapping the gdrive CLI tool."""
 
-    def __init__(self, binary_path: str = "gdrive"):
+    def __init__(self, binary_path: str = "gdrive") -> None:
         self.binary_path = binary_path
 
-    def run_json(self, cmd: List[str]) -> Any:
-        full_cmd = [self.binary_path] + cmd + ["--json"]
-        res = subprocess.run(full_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    def run_json(self, cmd: list[str]) -> object:
+        full_cmd = [self.binary_path, *cmd, "--json"]
+        res = subprocess.run(full_cmd, capture_output=True, text=True)
         if res.returncode != 0:
             raise RuntimeError(f"Command failed ({' '.join(full_cmd)}): {res.stderr.strip()}")
         try:
             return json.loads(res.stdout.strip()) if res.stdout.strip() else []
-        except json.JSONDecodeError:
-            raise RuntimeError(f"Failed to parse JSON output: {res.stdout.strip()}")
+        except json.JSONDecodeError as err:
+            raise RuntimeError(f"Failed to parse JSON output: {res.stdout.strip()}") from err
 
-    def get_folder_id(self, name: str, parent_id: Optional[str] = None) -> Optional[str]:
+    def get_folder_id(self, name: str, parent_id: str | None = None) -> str | None:
         args = ["readonly", "search", "--name-exact", name, "--type", "folder"]
         if parent_id:
             args.extend(["--parent-id", parent_id])
-        
+
         results = self.run_json(args)
         if results and isinstance(results, list):
             for item in results:
@@ -52,7 +52,7 @@ class GDriveClient:
                     return item["id"]
         return None
 
-    def get_or_create_folder(self, name: str, parent_id: Optional[str] = None) -> str:
+    def get_or_create_folder(self, name: str, parent_id: str | None = None) -> str:
         folder_id = self.get_folder_id(name, parent_id=parent_id)
         if folder_id:
             return folder_id
@@ -61,7 +61,7 @@ class GDriveClient:
         if parent_id:
             mkdir_cmd.extend(["--parent", parent_id])
 
-        res = subprocess.run(mkdir_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        res = subprocess.run(mkdir_cmd, capture_output=True, text=True)
         if res.returncode != 0:
             raise RuntimeError(f"mkdir failed for '{name}': {res.stderr.strip()}")
 
@@ -70,21 +70,21 @@ class GDriveClient:
             return out.split("ID: ")[1].rstrip(")")
         raise RuntimeError(f"Unexpected response when creating folder '{name}': {out}")
 
-    def list_files(self, parent_id: str) -> List[Dict[str, Any]]:
+    def list_files(self, parent_id: str) -> list[dict[str, Any]]:
         items = self.run_json(["readonly", "ls", parent_id, "--max", "0"])
         return items if isinstance(items, list) else []
 
-    def get_grouped_files(self, parent_id: str, extension: Optional[str] = None) -> Dict[str, List[str]]:
+    def get_grouped_files(self, parent_id: str, extension: str | None = None) -> dict[str, list[str]]:
         """Returns filename -> list of file_ids dictionary (preserving duplicates)."""
         items = self.list_files(parent_id)
-        grouped: Dict[str, List[str]] = {}
+        grouped: dict[str, list[str]] = {}
         for it in items:
             name = it.get("name", "")
             if extension is None or name.endswith(extension):
                 grouped.setdefault(name, []).append(it["id"])
         return grouped
 
-    def get_file_map(self, parent_id: str, extension: Optional[str] = None) -> Dict[str, str]:
+    def get_file_map(self, parent_id: str, extension: str | None = None) -> dict[str, str]:
         """Returns filename -> file_id dictionary."""
         return {name: ids[0] for name, ids in self.get_grouped_files(parent_id, extension=extension).items()}
 
@@ -94,7 +94,7 @@ class GDriveClient:
             print(f"  [DRY-RUN] Would trash: {label} (ID: {file_id})")
             return True
 
-        res = subprocess.run([self.binary_path, "mutate", "trash", file_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        res = subprocess.run([self.binary_path, "mutate", "trash", file_id], capture_output=True, text=True)
         if res.returncode != 0:
             print(f"  [!] Failed to trash {label}: {res.stderr.strip()}", file=sys.stderr)
             return False
@@ -109,9 +109,8 @@ class GDriveClient:
         print(f"  [+] Uploading {local_path.name}...")
         res = subprocess.run(
             [self.binary_path, "mutate", "upload", str(local_path), "--parent", parent_id],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
+            capture_output=True,
+            text=True,
         )
         if res.returncode != 0:
             print(f"  [!] Failed to upload {local_path.name}: {res.stderr.strip()}", file=sys.stderr)
@@ -125,8 +124,8 @@ class GDriveClient:
         remote_folder_id: str,
         extension: str = ".jar",
         prune: bool = True,
-        dry_run: bool = False
-    ) -> Tuple[int, int]:
+        dry_run: bool = False,
+    ) -> tuple[int, int]:
         """
         Synchronizes local directory with remote Google Drive folder.
         Returns (uploaded_count, trashed_count).
@@ -134,7 +133,7 @@ class GDriveClient:
         trashed_count = 0
         uploaded_count = 0
 
-        local_files: Dict[str, Path] = {}
+        local_files: dict[str, Path] = {}
         if local_dir.exists():
             local_files = {f.name: f for f in local_dir.iterdir() if f.is_file() and f.suffix == extension}
 
@@ -160,7 +159,7 @@ class GDriveClient:
 
         return uploaded_count, trashed_count
 
-    def get_web_url(self, folder_id: str) -> Optional[str]:
+    def get_web_url(self, folder_id: str) -> str | None:
         res = subprocess.run([self.binary_path, "readonly", "url", folder_id], stdout=subprocess.PIPE, text=True)
         if res.returncode == 0 and res.stdout.strip():
             return res.stdout.strip()

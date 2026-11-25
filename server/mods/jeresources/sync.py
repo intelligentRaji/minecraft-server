@@ -79,7 +79,7 @@ STR_LIST_KEYS: tuple[str, ...] = (
 )
 
 
-def _validate_str_list(rel_path: str, key: str, value: Any) -> list[str]:
+def _validate_str_list(rel_path: str, key: str, value: object) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         return [
             f"{rel_path} invariant violation: '{key}' must be a list of strings "
@@ -89,7 +89,7 @@ def _validate_str_list(rel_path: str, key: str, value: Any) -> list[str]:
     return []
 
 
-def _validate_int_list(rel_path: str, key: str, value: Any) -> list[str]:
+def _validate_int_list(rel_path: str, key: str, value: object) -> list[str]:
     if not isinstance(value, list) or not all(is_strict_int(item) for item in value):
         return [
             f"{rel_path} invariant violation: '{key}' must be a list of integers "
@@ -99,7 +99,7 @@ def _validate_int_list(rel_path: str, key: str, value: Any) -> list[str]:
     return []
 
 
-def validate_jeresources_toml(rel_path: str, data: Any) -> list[str]:
+def validate_jeresources_toml(rel_path: str, data: object) -> list[str]:
     """Validate schema, types, and bounds for a Just Enough Resources TOML file."""
     key_errors = check_table_keys(data, rel_path, EXPECTED_KEYS)
     if key_errors:
@@ -109,6 +109,7 @@ def validate_jeresources_toml(rel_path: str, data: Any) -> list[str]:
             for err in key_errors
         ]
 
+    assert isinstance(data, dict)
     errors: list[str] = []
 
     for key in GRID_INT_KEYS:

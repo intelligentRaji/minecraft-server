@@ -119,7 +119,7 @@ def _validate_int_range(
     return []
 
 
-def validate_sliceanddice_common(data: Any) -> list[str]:
+def validate_sliceanddice_common(data: object) -> list[str]:
     """Validate schema, types, and invariants for `config/sliceanddice-common.toml`."""
     errors = check_table_keys(
         data,

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
 
 MOD_DIR = Path(__file__).resolve().parent
 MODS_DIR = MOD_DIR.parent
@@ -63,7 +62,7 @@ EXPECTED_CONFIG_KEYS: frozenset[str] = frozenset({
 })
 
 
-def validate_corecommands_config(data: Any) -> list[str]:
+def validate_corecommands_config(data: object) -> list[str]:
     """Validate architectural and operational invariants for CoreCommands `config.json`."""
     if not isinstance(data, dict):
         return [
@@ -99,7 +98,7 @@ def validate_corecommands_config(data: Any) -> list[str]:
     return errors
 
 
-def validate_corecommands_rules(data: Any) -> list[str]:
+def validate_corecommands_rules(data: object) -> list[str]:
     """Validate architectural and operational invariants for CoreCommands `rules.json`."""
     if not isinstance(data, list):
         return [

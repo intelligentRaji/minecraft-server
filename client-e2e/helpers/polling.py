@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 import psutil
 
@@ -15,8 +16,6 @@ DEFAULT_POLL_TIMEOUT_SECONDS = 30.0
 DEFAULT_POLL_INTERVAL_SECONDS = 0.1
 DEFAULT_TERMINATE_TIMEOUT_SECONDS = 5.0
 KILL_WAIT_TIMEOUT_SECONDS = 10.0
-
-T = TypeVar("T")
 
 
 class FatalPollError(Exception):
@@ -40,7 +39,7 @@ class ProcessTreeTimeoutExpired(subprocess.TimeoutExpired):
         return f"{base} ({', '.join(details)})" if details else base
 
 
-def wait_until(
+def wait_until[T](
     predicate: Callable[[], T | None],
     *,
     timeout: float = DEFAULT_POLL_TIMEOUT_SECONDS,
@@ -82,14 +81,10 @@ def _close_popen_pipes_and_wait(proc: subprocess.Popen[Any]) -> None:
     """Close standard pipes and reap a Popen handle without blocking indefinitely."""
     for pipe in (proc.stdin, proc.stdout, proc.stderr):
         if pipe is not None:
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 pipe.close()
-            except (OSError, ValueError):
-                pass
-    try:
+    with contextlib.suppress(subprocess.TimeoutExpired):
         proc.wait(timeout=1.0)
-    except subprocess.TimeoutExpired:
-        pass
 
 
 def terminate_process_tree(
@@ -106,23 +101,17 @@ def terminate_process_tree(
             return
 
         processes: list[psutil.Process] = [parent]
-        try:
+        with contextlib.suppress(psutil.NoSuchProcess):
             processes.extend(parent.children(recursive=True))
-        except psutil.NoSuchProcess:
-            pass
 
         for proc in reversed(processes):
-            try:
+            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
                 proc.terminate()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
 
         _, alive = psutil.wait_procs(processes, timeout=timeout)
         for proc in alive:
-            try:
+            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
                 proc.kill()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
         psutil.wait_procs(alive, timeout=KILL_WAIT_TIMEOUT_SECONDS)
     finally:
         if isinstance(target, subprocess.Popen):

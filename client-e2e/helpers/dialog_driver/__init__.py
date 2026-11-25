@@ -10,9 +10,9 @@ from .win32 import Win32DialogDriver
 from .x11 import X11DialogDriver
 
 __all__ = [
+    "TIMEOUT_DIALOG",
     "BaseDialogDriver",
     "DialogWindow",
-    "TIMEOUT_DIALOG",
     "Win32DialogDriver",
     "X11DialogDriver",
     "create_dialog_driver",

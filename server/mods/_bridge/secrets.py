@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -35,7 +34,7 @@ SECRET_KEY_NAMES: frozenset[str] = frozenset({
 
 
 def scan_mapping_for_secrets(
-    obj: Any,
+    obj: object,
     rel_path: str,
     key_path: str = "",
     *,

@@ -10,7 +10,7 @@ Organized by domain:
 
 from __future__ import annotations
 
-from .cli import run_sync_cli
+from .cli import SyncModuleProtocol, TargetDirSyncModuleProtocol, run_sync_cli
 from .files import (
     DEFAULT_FORBIDDEN_SUFFIXES,
     apply_static_files,
@@ -33,6 +33,8 @@ __all__ = [
     "DEFAULT_FORBIDDEN_SUFFIXES",
     "SECRET_KEY_NAMES",
     "SECRET_PATTERNS",
+    "SyncModuleProtocol",
+    "TargetDirSyncModuleProtocol",
     "apply_static_files",
     "atomic_write_bytes",
     "check_forbidden_entries",

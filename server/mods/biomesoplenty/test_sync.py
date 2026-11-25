@@ -12,19 +12,22 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from _bridge import SyncModuleProtocol
 
 MOD_DIR = Path(__file__).resolve().parent
 SYNC_SCRIPT = MOD_DIR / "sync.py"
 
 
-def load_sync_module() -> ModuleType:
+def load_sync_module() -> SyncModuleProtocol:
     spec = importlib.util.spec_from_file_location("biomesoplenty_sync", SYNC_SCRIPT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {SYNC_SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast("SyncModuleProtocol", module)
 
 
 def format_gameplay_toml(wandering_trader_trades: object) -> str:
@@ -284,7 +287,10 @@ class BiomesOPlentySyncTest(unittest.TestCase):
             self.sync.validate_configs()
         self.assertIn("invalid TOML", str(ctx_toml.exception))
 
-        gen_path.write_text("[nether]\nbop_nether_region_weight = 13\nbop_nether_rare_region_weight = 2\n", encoding="utf-8")
+        gen_path.write_text(
+            "[nether]\nbop_nether_region_weight = 13\nbop_nether_rare_region_weight = 2\n",
+            encoding="utf-8",
+        )
         with self.assertRaises(ValueError) as ctx_missing_table:
             self.sync.validate_configs()
         self.assertIn("missing required keys ['overworld']", str(ctx_missing_table.exception))

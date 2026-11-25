@@ -11,19 +11,22 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from _bridge import SyncModuleProtocol
 
 MOD_DIR = Path(__file__).resolve().parent
 SYNC_SCRIPT = MOD_DIR / "sync.py"
 
 
-def load_sync_module() -> ModuleType:
+def load_sync_module() -> SyncModuleProtocol:
     spec = importlib.util.spec_from_file_location("create_sync", SYNC_SCRIPT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {SYNC_SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast("SyncModuleProtocol", module)
 
 
 class CreateSyncTest(unittest.TestCase):
@@ -193,29 +196,105 @@ class CreateSyncTest(unittest.TestCase):
         orig = server_path.read_text(encoding="utf-8")
 
         cases = [
-            ("tickrateSyncTimer = 20", "tickrateSyncTimer = 5", "[infrastructure].tickrateSyncTimer must be an integer > 5"),
-            ("tickrateSyncTimer = 20", "tickrateSyncTimer = true", "[infrastructure].tickrateSyncTimer must be an integer > 5"),
+            (
+                "tickrateSyncTimer = 20",
+                "tickrateSyncTimer = 5",
+                "[infrastructure].tickrateSyncTimer must be an integer > 5",
+            ),
+            (
+                "tickrateSyncTimer = 20",
+                "tickrateSyncTimer = true",
+                "[infrastructure].tickrateSyncTimer must be an integer > 5",
+            ),
             ("bulkPressing = false", 'bulkPressing = "no"', "[recipes].bulkPressing must be a boolean"),
-            ("maxFireworkIngredientsInCrafter = 9", "maxFireworkIngredientsInCrafter = 1", "[recipes].maxFireworkIngredientsInCrafter must be an integer > 1"),
+            (
+                "maxFireworkIngredientsInCrafter = 9",
+                "maxFireworkIngredientsInCrafter = 1",
+                "[recipes].maxFireworkIngredientsInCrafter must be an integer > 1",
+            ),
             ("maxBeltLength = 20", "maxBeltLength = 5", "[kinetics].maxBeltLength must be an integer > 5"),
             ("maxRotationSpeed = 256", "maxRotationSpeed = 64", "[kinetics].maxRotationSpeed must be an integer > 64"),
-            ('ignoreDeployerAttacks = "CREEPERS"', 'ignoreDeployerAttacks = "ZOMBIES"', "[kinetics].ignoreDeployerAttacks must be one of {ALL, CREEPERS, NONE}"),
-            ("crankHungerMultiplier = 0.009999999776482582", "crankHungerMultiplier = 1.5", "[kinetics].crankHungerMultiplier must be a finite number in 0.0..1.0"),
-            ("fanPushDistance = 20", "fanPushDistance = 5", "[kinetics.encasedFan].fanPushDistance must be an integer > 5"),
-            ('movableSpawners = "NO_PICKUP"', 'movableSpawners = "DESTROY"', "[kinetics.contraptions].movableSpawners must be one of {MOVABLE, NO_PICKUP, UNMOVABLE}"),
-            ("mediumSpeed = 30.0", "mediumSpeed = 5000.0", "[kinetics.stats].mediumSpeed must be a finite number in 0.0..4096.0"),
-            ("crushing_wheel = 8.0", "crushing_wheel = -1.0", "[kinetics.stressValues.v2.impact].crushing_wheel must be a non-negative finite number"),
-            ("steam_engine = 1024.0", "steam_engine = nan", "[kinetics.stressValues.v2.capacity].steam_engine must be a non-negative finite number"),
-            ("hosePulleyBlockThreshold = 10000", "hosePulleyBlockThreshold = -2", "[fluids].hosePulleyBlockThreshold must be an integer >= -1"),
-            ('bottomlessFluidMode = "ALLOW_BY_TAG"', 'bottomlessFluidMode = "INVALID"', "[fluids].bottomlessFluidMode must be one of {ALLOW_ALL, ALLOW_BY_TAG, DENY_ALL, DENY_BY_TAG}"),
+            (
+                'ignoreDeployerAttacks = "CREEPERS"',
+                'ignoreDeployerAttacks = "ZOMBIES"',
+                "[kinetics].ignoreDeployerAttacks must be one of {ALL, CREEPERS, NONE}",
+            ),
+            (
+                "crankHungerMultiplier = 0.009999999776482582",
+                "crankHungerMultiplier = 1.5",
+                "[kinetics].crankHungerMultiplier must be a finite number in 0.0..1.0",
+            ),
+            (
+                "fanPushDistance = 20",
+                "fanPushDistance = 5",
+                "[kinetics.encasedFan].fanPushDistance must be an integer > 5",
+            ),
+            (
+                'movableSpawners = "NO_PICKUP"',
+                'movableSpawners = "DESTROY"',
+                "[kinetics.contraptions].movableSpawners must be one of {MOVABLE, NO_PICKUP, UNMOVABLE}",
+            ),
+            (
+                "mediumSpeed = 30.0",
+                "mediumSpeed = 5000.0",
+                "[kinetics.stats].mediumSpeed must be a finite number in 0.0..4096.0",
+            ),
+            (
+                "crushing_wheel = 8.0",
+                "crushing_wheel = -1.0",
+                "[kinetics.stressValues.v2.impact].crushing_wheel must be a non-negative finite number",
+            ),
+            (
+                "steam_engine = 1024.0",
+                "steam_engine = nan",
+                "[kinetics.stressValues.v2.capacity].steam_engine must be a non-negative finite number",
+            ),
+            (
+                "hosePulleyBlockThreshold = 10000",
+                "hosePulleyBlockThreshold = -2",
+                "[fluids].hosePulleyBlockThreshold must be an integer >= -1",
+            ),
+            (
+                'bottomlessFluidMode = "ALLOW_BY_TAG"',
+                'bottomlessFluidMode = "INVALID"',
+                "[fluids].bottomlessFluidMode must be one of {ALLOW_ALL, ALLOW_BY_TAG, DENY_ALL, DENY_BY_TAG}",
+            ),
             ("vaultCapacity = 20", "vaultCapacity = 2049", "[logistics].vaultCapacity must be an integer in 1..2048"),
-            ("brassTunnelTimer = 10", "brassTunnelTimer = 11", "[logistics].brassTunnelTimer must be an integer in 1..10"),
-            ("maxSchematicPacketSize = 1024", "maxSchematicPacketSize = 128", "[schematics].maxSchematicPacketSize must be an integer in 256..32767"),
-            ("schematicannonDelay = 10", "schematicannonDelay = 1", "[schematics.schematicannon].schematicannonDelay must be an integer > 1"),
-            ("maxSymmetryWandRange = 50", "maxSymmetryWandRange = 10", "[equipment].maxSymmetryWandRange must be an integer > 10"),
-            ("maxTrackPlacementLength = 32", "maxTrackPlacementLength = 15", "[trains].maxTrackPlacementLength must be an integer in 16..128"),
-            ("trainTopSpeed = 28.0", "trainTopSpeed = -0.1", "[trains.trainStats].trainTopSpeed must be a finite number >= 0.0"),
-            ("poweredTrainAcceleration = 3.0", "poweredTrainAcceleration = inf", "[trains.poweredTrainStats].poweredTrainAcceleration must be a finite number >= 0.0"),
+            (
+                "brassTunnelTimer = 10",
+                "brassTunnelTimer = 11",
+                "[logistics].brassTunnelTimer must be an integer in 1..10",
+            ),
+            (
+                "maxSchematicPacketSize = 1024",
+                "maxSchematicPacketSize = 128",
+                "[schematics].maxSchematicPacketSize must be an integer in 256..32767",
+            ),
+            (
+                "schematicannonDelay = 10",
+                "schematicannonDelay = 1",
+                "[schematics.schematicannon].schematicannonDelay must be an integer > 1",
+            ),
+            (
+                "maxSymmetryWandRange = 50",
+                "maxSymmetryWandRange = 10",
+                "[equipment].maxSymmetryWandRange must be an integer > 10",
+            ),
+            (
+                "maxTrackPlacementLength = 32",
+                "maxTrackPlacementLength = 15",
+                "[trains].maxTrackPlacementLength must be an integer in 16..128",
+            ),
+            (
+                "trainTopSpeed = 28.0",
+                "trainTopSpeed = -0.1",
+                "[trains.trainStats].trainTopSpeed must be a finite number >= 0.0",
+            ),
+            (
+                "poweredTrainAcceleration = 3.0",
+                "poweredTrainAcceleration = inf",
+                "[trains.poweredTrainStats].poweredTrainAcceleration must be a finite number >= 0.0",
+            ),
         ]
 
         for old, new, expected_msg in cases:

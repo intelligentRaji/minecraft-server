@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, status
 
@@ -22,9 +23,9 @@ router = APIRouter()
 @router.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    config: Config = Depends(get_config),
-    store: ManifestStore = Depends(get_store),
-    manager: ConnectionManager = Depends(get_manager),
+    config: Annotated[Config, Depends(get_config)],
+    store: Annotated[ManifestStore, Depends(get_store)],
+    manager: Annotated[ConnectionManager, Depends(get_manager)],
 ) -> None:
     if not config.client_token:
         await websocket.close(

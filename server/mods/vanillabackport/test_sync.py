@@ -12,19 +12,22 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from _bridge import SyncModuleProtocol
 
 MOD_DIR = Path(__file__).resolve().parent
 SYNC_SCRIPT = MOD_DIR / "sync.py"
 
 
-def load_sync_module() -> ModuleType:
+def load_sync_module() -> SyncModuleProtocol:
     spec = importlib.util.spec_from_file_location("vanillabackport_sync", SYNC_SCRIPT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {SYNC_SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast("SyncModuleProtocol", module)
 
 
 class VanillaBackportSyncTest(unittest.TestCase):
@@ -157,7 +160,12 @@ class VanillaBackportSyncTest(unittest.TestCase):
             self.sync.validate_configs()
         self.assertIn("invalid TOML", str(ctx_toml.exception))
 
-        without_wilderness = original.replace('["Wilderness Bound"]\n\t#allow Dappled Forest biomes to generate\n\thas_dappled_forest = false\n', "")
+        wilderness_block = (
+            '["Wilderness Bound"]\n'
+            "\t#allow Dappled Forest biomes to generate\n"
+            "\thas_dappled_forest = false\n"
+        )
+        without_wilderness = original.replace(wilderness_block, "")
         cfg.write_text(without_wilderness, encoding="utf-8")
         with self.assertRaises(ValueError) as ctx_missing_table:
             self.sync.validate_configs()
@@ -168,12 +176,13 @@ class VanillaBackportSyncTest(unittest.TestCase):
             self.sync.validate_configs()
         self.assertIn("unexpected keys ['Extra Update']", str(ctx_extra_table.exception))
 
+        hot_lava_block = (
+            '["Hot as Lava"]\n'
+            "\t#allow Chicken jockeys to drop the Lava Chicken music disc\n"
+            "\tlava_chicken_music_disc = true\n"
+        )
         cfg.write_text(
-            '"Hot as Lava" = true\n'
-            + original.replace(
-                '["Hot as Lava"]\n\t#allow Chicken jockeys to drop the Lava Chicken music disc\n\tlava_chicken_music_disc = true\n',
-                "",
-            ),
+            '"Hot as Lava" = true\n' + original.replace(hot_lava_block, ""),
             encoding="utf-8",
         )
         with self.assertRaises(ValueError) as ctx_non_table:

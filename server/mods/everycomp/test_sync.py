@@ -11,19 +11,22 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from _bridge import SyncModuleProtocol
 
 MOD_DIR = Path(__file__).resolve().parent
 SYNC_SCRIPT = MOD_DIR / "sync.py"
 
 
-def load_sync_module() -> ModuleType:
+def load_sync_module() -> SyncModuleProtocol:
     spec = importlib.util.spec_from_file_location("everycomp_sync", SYNC_SCRIPT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {SYNC_SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast("SyncModuleProtocol", module)
 
 
 class EveryCompSyncTest(unittest.TestCase):
@@ -208,10 +211,15 @@ class EveryCompSyncTest(unittest.TestCase):
         self.assertIn("strict boolean", str(ctx.exception))
 
         # Missing top-level table must fail
-        path.write_text(
-            original.replace("[other]\n\t#Disable all of Supported Mods on EveryCompat's side. This feature is same as Library-Section which do not have any Wood Modules.\n\t#WARNING: If the config between CLIENT & SERVER are not the same, then you won't able to join a server\n\tinclude_all_wood_modules = true\n", ""),
-            encoding="utf-8",
+        missing_other = (
+            "[other]\n"
+            "\t#Disable all of Supported Mods on EveryCompat's side. "
+            "This feature is same as Library-Section which do not have any Wood Modules.\n"
+            "\t#WARNING: If the config between CLIENT & SERVER are not the same, "
+            "then you won't able to join a server\n"
+            "\tinclude_all_wood_modules = true\n"
         )
+        path.write_text(original.replace(missing_other, ""), encoding="utf-8")
         with self.assertRaises(ValueError) as ctx:
             self.sync.validate_configs()
         self.assertIn("missing required keys", str(ctx.exception))

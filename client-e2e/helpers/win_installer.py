@@ -275,7 +275,7 @@ class WindowsInstallerHarness:
         )
 
     def assert_installation_intact(self) -> None:
-        """Assert installation files, leftovers, startup script, and registry keys survived a blocked uninstall attempt."""
+        """Assert installation files, leftovers, startup script, and registry survived blocked uninstall."""
         assert self.installed_exe.is_file(), "ModSync.exe must remain intact after blocked uninstall"
         assert self.uninstaller_exe.is_file(), (
             "unins000.exe must remain intact after blocked uninstall"

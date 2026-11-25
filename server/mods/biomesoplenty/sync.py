@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
 
 MOD_DIR = Path(__file__).resolve().parent
 MODS_DIR = MOD_DIR.parent
@@ -138,7 +137,7 @@ GENERATION_TABLES: dict[str, tuple[str, ...]] = {
 }
 
 
-def validate_biome_toggles(data: Any) -> list[str]:
+def validate_biome_toggles(data: object) -> list[str]:
     """Validate schema and strict boolean types for `config/biomesoplenty/biome_toggles.json`."""
     if not isinstance(data, dict):
         return [
@@ -166,7 +165,7 @@ def validate_biome_toggles(data: Any) -> list[str]:
     return errors
 
 
-def validate_gameplay(data: Any) -> list[str]:
+def validate_gameplay(data: object) -> list[str]:
     """Validate schema and strict boolean type for `config/biomesoplenty/gameplay.toml`."""
     if not isinstance(data, dict):
         return [
@@ -213,7 +212,7 @@ def validate_gameplay(data: Any) -> list[str]:
     return errors
 
 
-def validate_generation(data: Any) -> list[str]:
+def validate_generation(data: object) -> list[str]:
     """Validate schema and non-negative integer invariants for `config/biomesoplenty/generation.toml`."""
     if not isinstance(data, dict):
         return [

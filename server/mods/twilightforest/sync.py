@@ -118,7 +118,7 @@ EXPECTED_ROOT_KEYS: tuple[str, ...] = TOP_LEVEL_SCALAR_KEYS + tuple(EXPECTED_TAB
 
 
 def _check_section_keys(
-    table: Any,
+    table: object,
     expected_keys: tuple[str, ...],
     section_label: str,
 ) -> tuple[dict[str, Any] | None, list[str]]:
@@ -137,6 +137,7 @@ def _check_section_keys(
         return None if not isinstance(table, dict) else table, [
             f"{err} ({rationale})" for err in raw_errors
         ]
+    assert isinstance(table, dict)
     return table, []
 
 
@@ -248,7 +249,7 @@ def _validate_non_empty_str_list(
     return errors
 
 
-def validate_twilightforest_common(data: Any) -> list[str]:
+def validate_twilightforest_common(data: object) -> list[str]:
     """Validate schema, types, and invariants for `config/twilightforest-common.toml`."""
     root, errors = _check_section_keys(data, EXPECTED_ROOT_KEYS, "root")
     if root is None:

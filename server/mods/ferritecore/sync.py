@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
 
 MOD_DIR = Path(__file__).resolve().parent
 MODS_DIR = MOD_DIR.parent
@@ -59,7 +58,7 @@ EXPECTED_MIXIN_KEYS: tuple[str, ...] = (
 )
 
 
-def validate_ferritecore_mixin(data: Any) -> list[str]:
+def validate_ferritecore_mixin(data: object) -> list[str]:
     """Validate schema, types, and dependency invariants for `config/ferritecore-mixin.toml`."""
     if not isinstance(data, dict):
         return [

@@ -140,7 +140,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Synchronize server mods from modpack/ into data/mods/ and notify modsync-api."
     )
-    parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files or calling API.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview changes without modifying files or calling API.",
+    )
     parser.add_argument("--skip-api", action="store_true", help="Skip modsync-api healthcheck and reload notification.")
     parser.add_argument(
         "--modsync-url",

@@ -57,7 +57,7 @@ COMMON_GENERAL_BOOL_KEYS: tuple[str, ...] = (
     "mod_version_check_packet",
     "debug_packet",
 )
-COMMON_GENERAL_KEYS: tuple[str, ...] = COMMON_GENERAL_BOOL_KEYS + ("tooltips",)
+COMMON_GENERAL_KEYS: tuple[str, ...] = (*COMMON_GENERAL_BOOL_KEYS, "tooltips")
 COMMON_TOOLTIPS_KEYS: tuple[str, ...] = (
     "mod_origin_enabled",
     "block_type_enabled",
@@ -71,11 +71,11 @@ HAZARDOUS_REGEX_SECTIONS: tuple[str, ...] = (
     "entryset",
     "module",
 )
-HAZARDOUS_ROOT_KEYS: tuple[str, ...] = HAZARDOUS_REGEX_SECTIONS + ("other",)
+HAZARDOUS_ROOT_KEYS: tuple[str, ...] = (*HAZARDOUS_REGEX_SECTIONS, "other")
 
 
 def _check_keys_with_rationale(
-    table: Any,
+    table: object,
     rel_path: str,
     section_label: str,
     required_keys: tuple[str, ...],
@@ -92,6 +92,7 @@ def _check_keys_with_rationale(
         return None if not isinstance(table, dict) else table, [
             f"{err} ({rationale})" for err in raw_errors
         ]
+    assert isinstance(table, dict)
     return table, []
 
 
@@ -113,7 +114,7 @@ def _validate_strict_bool(
     return []
 
 
-def validate_everycomp_common(data: Any) -> list[str]:
+def validate_everycomp_common(data: object) -> list[str]:
     """Validate schema and strict boolean types for `config/everycomp-common.toml`."""
     schema_rationale = (
         "all Every Compat common config sections and keys must be explicitly declared "
@@ -170,7 +171,7 @@ def validate_everycomp_common(data: Any) -> list[str]:
 
 
 def _validate_modid_bool_map(
-    category_table: Any,
+    category_table: object,
     section_path: str,
 ) -> list[str]:
     if not isinstance(category_table, dict):
@@ -209,7 +210,7 @@ def _validate_modid_bool_map(
     return errors
 
 
-def validate_everycomp_entries(data: Any) -> list[str]:
+def validate_everycomp_entries(data: object) -> list[str]:
     """Validate schema and nested mod-entry booleans for `config/everycomp-entries.toml`."""
     schema_rationale = (
         "everycomp-entries.toml must contain only [types] and [entries] tables with valid "
@@ -259,7 +260,7 @@ def validate_everycomp_entries(data: Any) -> list[str]:
     return errors
 
 
-def validate_everycomp_hazardous(data: Any) -> list[str]:
+def validate_everycomp_hazardous(data: object) -> list[str]:
     """Validate schema, regex compilation, and booleans for `config/everycomp-hazardous.toml`."""
     schema_rationale = (
         "everycomp-hazardous.toml controls conditional block/module registration that must "

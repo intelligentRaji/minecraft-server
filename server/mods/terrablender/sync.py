@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
 
 MOD_DIR = Path(__file__).resolve().parent
 MODS_DIR = MOD_DIR.parent
@@ -76,7 +75,7 @@ GENERATION_INT_BOUNDS: dict[str, tuple[int, int, str]] = {
 }
 
 
-def validate_terrablender_toml(data: Any) -> list[str]:
+def validate_terrablender_toml(data: object) -> list[str]:
     """Validate schema, types, and range invariants for `config/terrablender.toml`."""
     errors = check_table_keys(
         data,

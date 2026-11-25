@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
-from typing import Any
+from typing import TypeGuard
 
 
-def is_strict_int(value: Any) -> bool:
+def is_strict_int(value: object) -> TypeGuard[int]:
     """Return True if `value` is an int and not a bool."""
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def is_finite_number(value: Any) -> bool:
+def is_finite_number(value: object) -> TypeGuard[int | float]:
     """Return True if `value` is a finite int or float (and not a bool)."""
     return (
         isinstance(value, (int, float))
@@ -22,7 +22,7 @@ def is_finite_number(value: Any) -> bool:
 
 
 def check_table_keys(
-    table: Any,
+    table: object,
     label: str,
     required_keys: Iterable[str],
     optional_keys: Iterable[str] = (),

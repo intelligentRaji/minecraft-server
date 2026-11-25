@@ -8,7 +8,6 @@ import json
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 import pytest
@@ -28,7 +27,7 @@ class FakeTransport:
 
     def __init__(
         self,
-        manifest_payload: dict[str, Any],
+        manifest_payload: dict[str, object],
         files: dict[str, bytes],
         *,
         get_json_error: Exception | None = None,
@@ -44,7 +43,7 @@ class FakeTransport:
         self.downloads: list[str] = []
         self.closed = False
 
-    def get_json(self, url: str) -> dict[str, Any]:
+    def get_json(self, url: str) -> dict[str, object]:
         self.requested_urls.append(url)
         if self.get_json_error is not None:
             raise self.get_json_error
@@ -75,8 +74,8 @@ class FakeTransport:
 def _build_remote(
     files: dict[str, tuple[str, bytes]] | dict[str, bytes],
     version: str = "v1",
-) -> tuple[dict[str, Any], dict[str, bytes]]:
-    mods = []
+) -> tuple[dict[str, object], dict[str, bytes]]:
+    mods: list[dict[str, object]] = []
     exact_files: dict[str, bytes] = {}
     for name, value in sorted(files.items()):
         category, payload = value if isinstance(value, tuple) else ("server-client", value)

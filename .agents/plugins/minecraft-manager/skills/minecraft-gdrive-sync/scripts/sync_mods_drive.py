@@ -4,15 +4,17 @@ sync_mods_drive.py - Synchronize local modpack/ directory with Google Drive unde
 Uploads missing files and prunes stale files from Drive.
 """
 
+from __future__ import annotations
+
 import argparse
-from pathlib import Path
+
 from gdrive_utils import GDriveClient, find_modpack_dir
 
 MODPACK_DIR = find_modpack_dir()
 CATEGORIES = ["server-client", "server-only", "client-only"]
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Synchronize local Minecraft modpack with Google Drive.")
     parser.add_argument("--no-prune", action="store_true", help="Do not prune stale files from Drive")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying Google Drive")

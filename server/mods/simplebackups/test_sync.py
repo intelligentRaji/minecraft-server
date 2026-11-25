@@ -11,19 +11,22 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from _bridge import SyncModuleProtocol
 
 MOD_DIR = Path(__file__).resolve().parent
 SYNC_SCRIPT = MOD_DIR / "sync.py"
 
 
-def load_sync_module() -> ModuleType:
+def load_sync_module() -> SyncModuleProtocol:
     spec = importlib.util.spec_from_file_location("simplebackups_sync", SYNC_SCRIPT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {SYNC_SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast("SyncModuleProtocol", module)
 
 
 class SimpleBackupsSyncTest(unittest.TestCase):
@@ -127,7 +130,10 @@ class SimpleBackupsSyncTest(unittest.TestCase):
         (self.configs_dir / "simplebackups-server.toml").unlink()
         with self.assertRaises(ValueError) as ctx_missing:
             self.sync.validate_configs()
-        self.assertIn("Missing expected config files in configs/: simplebackups-server.toml", str(ctx_missing.exception))
+        self.assertIn(
+            "Missing expected config files in configs/: simplebackups-server.toml",
+            str(ctx_missing.exception),
+        )
 
     def test_invariant_output_path_must_be_simplebackups(self) -> None:
         """outputPath traversal, absolute paths, or non-default paths must fail with data/ isolation rationale."""
@@ -169,7 +175,11 @@ class SimpleBackupsSyncTest(unittest.TestCase):
             ("timer = 120", "timer = 0", "timer must be an integer in 1..32767"),
             ("timer = 120", "timer = 32768", "timer must be an integer in 1..32767"),
             ("fullBackupTimer = 525960", "fullBackupTimer = 0", "fullBackupTimer must be an integer in 1..5259600"),
-            ("fullBackupTimer = 525960", "fullBackupTimer = 5259601", "fullBackupTimer must be an integer in 1..5259600"),
+            (
+                "fullBackupTimer = 525960",
+                "fullBackupTimer = 5259601",
+                "fullBackupTimer must be an integer in 1..5259600",
+            ),
             ("compressionLevel = -1", "compressionLevel = -2", "compressionLevel must be an integer in -1..9"),
             ("compressionLevel = -1", "compressionLevel = 10", "compressionLevel must be an integer in -1..9"),
         ]

@@ -9,9 +9,13 @@ import os
 import shutil
 import tempfile
 import unittest
+from collections.abc import Mapping
 from contextlib import redirect_stdout
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from _bridge import SyncModuleProtocol
 
 MOD_DIR = Path(__file__).resolve().parent
 SYNC_SCRIPT = MOD_DIR / "sync.py"
@@ -31,7 +35,7 @@ VALID_MIXIN_CONFIG = {
 }
 
 
-def format_toml(values: dict[str, object]) -> str:
+def format_toml(values: Mapping[str, object]) -> str:
     lines: list[str] = []
     for key, value in values.items():
         if isinstance(value, bool):
@@ -43,13 +47,13 @@ def format_toml(values: dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def load_sync_module() -> ModuleType:
+def load_sync_module() -> SyncModuleProtocol:
     spec = importlib.util.spec_from_file_location("ferritecore_sync", SYNC_SCRIPT)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {SYNC_SCRIPT}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
+    return cast("SyncModuleProtocol", module)
 
 
 class FerriteCoreSyncTest(unittest.TestCase):
@@ -177,7 +181,7 @@ class FerriteCoreSyncTest(unittest.TestCase):
             self.sync.validate_configs()
         self.assertIn("invalid TOML", str(ctx_toml.exception))
 
-        wrong_type = dict(VALID_MIXIN_CONFIG)
+        wrong_type: dict[str, object] = dict(VALID_MIXIN_CONFIG)
         wrong_type["compactFastMap"] = "true"
         mixin_path.write_text(format_toml(wrong_type), encoding="utf-8")
         with self.assertRaises(ValueError) as ctx_type:
@@ -228,7 +232,7 @@ class FerriteCoreSyncTest(unittest.TestCase):
         """Secret patterns or credential keys in configs/ must fail validation."""
         mixin_path = self._mixin_path()
 
-        with_webhook = dict(VALID_MIXIN_CONFIG)
+        with_webhook: dict[str, object] = dict(VALID_MIXIN_CONFIG)
         with_webhook["secret"] = "https://discord.com/api/webhooks/123456789/abcdef_token"
         mixin_path.write_text(format_toml(with_webhook), encoding="utf-8")
         with self.assertRaises(ValueError) as ctx:

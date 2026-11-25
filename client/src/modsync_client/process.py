@@ -15,11 +15,12 @@ MC_CMDLINE_MARKERS = (
 )
 
 
-def _is_java_minecraft_process(proc: Any) -> bool:
-    name = (proc.info.get("name") or "").lower()
+def _is_java_minecraft_process(proc: psutil.Process) -> bool:
+    info: dict[str, Any] = getattr(proc, "info", None) or proc.as_dict(attrs=["name", "cmdline"])
+    name = (info.get("name") or "").lower()
     if "java" not in name:
         return False
-    cmdline = " ".join(proc.info.get("cmdline") or []).lower()
+    cmdline = " ".join(info.get("cmdline") or []).lower()
     return any(marker in cmdline for marker in MC_CMDLINE_MARKERS)
 
 

@@ -270,7 +270,7 @@ def _check_enum(
     return []
 
 
-def validate_common(data: Any) -> list[str]:
+def validate_common(data: object) -> list[str]:
     """Validate schema and types for `config/dynamictrees-common.toml`."""
     if not isinstance(data, dict):
         return [
@@ -360,7 +360,7 @@ def validate_common(data: Any) -> list[str]:
     return errors
 
 
-def validate_server(data: Any) -> list[str]:
+def validate_server(data: object) -> list[str]:
     """Validate schema, enums, and numeric ranges for `world/serverconfig/dynamictrees-server.toml`."""
     if not isinstance(data, dict):
         return [

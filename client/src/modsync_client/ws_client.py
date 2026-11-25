@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import random
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Protocol
 
 import websockets
 
@@ -17,6 +19,13 @@ from .syncer import ModSyncer, SyncResult, SyncStatus
 logger = logging.getLogger("modsync_client.ws")
 
 StatusCallback = Callable[[SyncStatus, str, SyncResult | None], None]
+
+
+class _WebSocketConn(Protocol):
+    async def recv(self) -> str | bytes: ...
+
+    async def send(self, message: str) -> None: ...
+
 
 WS_EVENT_HELLO = "hello"
 WS_EVENT_MODS_UPDATED = "mods_updated"
@@ -115,7 +124,7 @@ class ModSyncService:
     async def _perform_recommended_install(self) -> None:
         await self._run_sync_action("recommended", self.syncer.install_recommended)
 
-    async def _receive_next_event(self, ws: Any) -> dict[str, Any] | None:
+    async def _receive_next_event(self, ws: _WebSocketConn) -> dict[str, Any] | None:
         assert self._stop_event is not None
         recv_task = asyncio.create_task(ws.recv())
         stop_task = asyncio.create_task(self._stop_event.wait())
@@ -138,7 +147,7 @@ class ModSyncService:
             return {}
         return payload if isinstance(payload, dict) else {}
 
-    async def _handle_ws_event(self, ws: Any, event: dict[str, Any]) -> None:
+    async def _handle_ws_event(self, ws: _WebSocketConn, event: dict[str, Any]) -> None:
         event_type = event.get("type")
         if event_type == WS_EVENT_HELLO:
             remote_ver = event.get("version")
@@ -150,7 +159,7 @@ class ModSyncService:
         elif event_type == WS_EVENT_PING:
             await ws.send(WS_EVENT_PONG)
 
-    async def _consume_ws_session(self, ws: Any) -> None:
+    async def _consume_ws_session(self, ws: _WebSocketConn) -> None:
         assert self._stop_event is not None
         while not self._stop_event.is_set():
             event = await self._receive_next_event(ws)
@@ -162,10 +171,8 @@ class ModSyncService:
     async def _wait_reconnect_backoff(self, backoff: float) -> float:
         assert self._stop_event is not None
         jitter = random.uniform(0.0, 1.0)
-        try:
+        with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(self._stop_event.wait(), timeout=backoff + jitter)
-        except TimeoutError:
-            pass
         return min(backoff * 2.0, MAX_BACKOFF_SECONDS)
 
     async def _ws_loop(self) -> None:

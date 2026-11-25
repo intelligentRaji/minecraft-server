@@ -8,7 +8,7 @@ import sys
 import types
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import NoReturn
 
 import pytest
 
@@ -18,6 +18,7 @@ import modsync_client.updater as updater
 from modsync_client.config import Config
 from modsync_client.syncer import SyncResult, SyncStatus
 from modsync_client.updater import UpdateInfo
+from modsync_client.ws_client import StatusCallback
 
 
 def _raise(exc: BaseException) -> Callable[..., NoReturn]:
@@ -27,15 +28,100 @@ def _raise(exc: BaseException) -> Callable[..., NoReturn]:
     return _raiser
 
 
-def _sample_update() -> UpdateInfo:
-    return UpdateInfo(
-        version="9.9.9",
-        tag_name="client-v9.9.9",
-        html_url="https://example.test/release",
-        asset_name="ModSync-linux",
-        download_url="https://example.test/ModSync-linux",
-        expected_sha256="a" * 64,
-    )
+class _FakeSyncer:
+    """Configurable ModSyncer double recording lifecycle calls for CLI tests."""
+
+    def __init__(
+        self,
+        *,
+        result: SyncResult | None = None,
+        error: Exception | None = None,
+        events: list[str] | None = None,
+        **_kwargs: object,
+    ) -> None:
+        self._result = result or SyncResult(
+            status=SyncStatus.SYNCED,
+            version="v1",
+            mod_count=1,
+            message="sync finished",
+        )
+        self._error = error
+        self._events = events
+
+    @classmethod
+    def factory(
+        cls,
+        *,
+        result: SyncResult | None = None,
+        error: Exception | None = None,
+        events: list[str] | None = None,
+    ) -> Callable[..., _FakeSyncer]:
+        def _build(**kwargs: object) -> _FakeSyncer:
+            return cls(result=result, error=error, events=events, **kwargs)
+
+        return _build
+
+    def sync_once(self) -> SyncResult:
+        if self._events is not None:
+            self._events.append("sync_once")
+        if self._error is not None:
+            raise self._error
+        return self._result
+
+    def install_recommended(self) -> SyncResult:
+        if self._events is not None:
+            self._events.append("install_recommended")
+        if self._error is not None:
+            raise self._error
+        return self._result
+
+    def close(self) -> None:
+        if self._events is not None:
+            self._events.append("close")
+
+
+class _FakeService:
+    """Minimal ModSyncService double capturing CLI headless lifecycle calls."""
+
+    def __init__(
+        self,
+        config: Config,
+        *,
+        on_status: StatusCallback | None = None,
+        events: list[object] | None = None,
+        run_error: BaseException | None = None,
+    ) -> None:
+        self._events = events
+        self._run_error = run_error
+        self.on_status = on_status
+        if self._events is not None:
+            self._events.append(("init", config))
+
+    @classmethod
+    def factory(
+        cls,
+        *,
+        events: list[object] | None = None,
+        run_error: BaseException | None = None,
+    ) -> Callable[..., _FakeService]:
+        def _build(
+            config: Config,
+            *,
+            on_status: StatusCallback | None = None,
+        ) -> _FakeService:
+            return cls(config, on_status=on_status, events=events, run_error=run_error)
+
+        return _build
+
+    async def run(self) -> None:
+        if self._events is not None:
+            self._events.append("run")
+        if self._run_error is not None:
+            raise self._run_error
+
+    def stop(self) -> None:
+        if self._events is not None:
+            self._events.append("stop")
 
 
 @pytest.fixture(autouse=True)
@@ -99,8 +185,9 @@ def test_cli_update_up_to_date_skips_config_setup(
 def test_cli_update_applies_update_when_frozen(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    make_sample_update: Callable[..., UpdateInfo],
 ) -> None:
-    update = _sample_update()
+    update = make_sample_update()
     applied: list[UpdateInfo] = []
     relaunched: list[bool] = []
 
@@ -121,8 +208,9 @@ def test_cli_update_applies_update_when_frozen(
 def test_cli_update_with_relaunch_calls_relaunch_executable(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    make_sample_update: Callable[..., UpdateInfo],
 ) -> None:
-    update = _sample_update()
+    update = make_sample_update()
     events: list[object] = []
 
     monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
@@ -145,9 +233,10 @@ def test_cli_update_with_relaunch_calls_relaunch_executable(
 def test_cli_update_rejects_non_frozen_binary(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    make_sample_update: Callable[..., UpdateInfo],
 ) -> None:
     monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
-    monkeypatch.setattr(cli_main, "check_for_update", lambda _ver: _sample_update())
+    monkeypatch.setattr(cli_main, "check_for_update", lambda _ver: make_sample_update())
 
     rc = cli_main.main(["--update"])
 
@@ -171,9 +260,10 @@ def test_cli_update_returns_one_on_check_error(
 def test_cli_update_returns_one_on_download_error(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    make_sample_update: Callable[..., UpdateInfo],
 ) -> None:
     monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
-    monkeypatch.setattr(cli_main, "check_for_update", lambda _ver: _sample_update())
+    monkeypatch.setattr(cli_main, "check_for_update", lambda _ver: make_sample_update())
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(
         cli_main,
@@ -200,21 +290,11 @@ def test_cli_sync_once_returns_status_exit_code_and_closes_syncer(
 ) -> None:
     cfg = Config(server_url="https://mods.example", mods_dir=str(tmp_path / "mods"))
     events: list[str] = []
-
-    class FakeSyncer:
-        def __init__(self, **_kwargs: object) -> None:
-            pass
-
-        def sync_once(self) -> SyncResult:
-            events.append("sync_once")
-            return SyncResult(status=status, version="v1", mod_count=1, message="sync finished")
-
-        def close(self) -> None:
-            events.append("close")
+    result = SyncResult(status=status, version="v1", mod_count=1, message="sync finished")
 
     monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
     monkeypatch.setattr(cli_main, "resolve_or_setup_config", lambda _args: cfg)
-    monkeypatch.setattr(cli_main, "ModSyncer", FakeSyncer)
+    monkeypatch.setattr(cli_main, "ModSyncer", _FakeSyncer.factory(result=result, events=events))
 
     rc = cli_main.main(["--sync-once"])
 
@@ -229,27 +309,21 @@ def test_cli_sync_once_closes_syncer_and_returns_one_on_exception(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     cfg = Config(server_url="https://mods.example", mods_dir=str(tmp_path / "mods"))
-    closed: list[bool] = []
-
-    class FailingSyncer:
-        def __init__(self, **_kwargs: object) -> None:
-            pass
-
-        def sync_once(self) -> SyncResult:
-            raise RuntimeError("boom")
-
-        def close(self) -> None:
-            closed.append(True)
+    events: list[str] = []
 
     monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
     monkeypatch.setattr(cli_main, "resolve_or_setup_config", lambda _args: cfg)
-    monkeypatch.setattr(cli_main, "ModSyncer", FailingSyncer)
+    monkeypatch.setattr(
+        cli_main,
+        "ModSyncer",
+        _FakeSyncer.factory(error=RuntimeError("boom"), events=events),
+    )
 
     rc = cli_main.main(["--sync-once"])
 
     assert rc == 1
     assert "boom" in capsys.readouterr().err
-    assert closed == [True]
+    assert events == ["sync_once", "close"]
 
 
 def test_cli_invalid_invite_uri_exits_cleanly_without_unhandled_exception(
@@ -278,26 +352,16 @@ def test_cli_install_recommended_runs_recommended_and_closes_syncer(
 ) -> None:
     cfg = Config(server_url="https://mods.example", mods_dir=str(tmp_path / "mods"))
     events: list[str] = []
-
-    class FakeSyncer:
-        def __init__(self, **_kwargs: object) -> None:
-            pass
-
-        def install_recommended(self) -> SyncResult:
-            events.append("install_recommended")
-            return SyncResult(
-                status=SyncStatus.SYNCED,
-                version="v1",
-                mod_count=2,
-                message="installed optional",
-            )
-
-        def close(self) -> None:
-            events.append("close")
+    result = SyncResult(
+        status=SyncStatus.SYNCED,
+        version="v1",
+        mod_count=2,
+        message="installed optional",
+    )
 
     monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
     monkeypatch.setattr(cli_main, "resolve_or_setup_config", lambda _args: cfg)
-    monkeypatch.setattr(cli_main, "ModSyncer", FakeSyncer)
+    monkeypatch.setattr(cli_main, "ModSyncer", _FakeSyncer.factory(result=result, events=events))
 
     rc = cli_main.main(["--install-recommended"])
 
@@ -313,19 +377,9 @@ def test_cli_headless_runs_service(
     cfg = Config(server_url="https://mods.example", mods_dir=str(tmp_path / "mods"))
     events: list[object] = []
 
-    class FakeService:
-        def __init__(self, service_cfg: Config, *, on_status: Any = None) -> None:
-            events.append(("init", service_cfg))
-
-        async def run(self) -> None:
-            events.append("run")
-
-        def stop(self) -> None:
-            events.append("stop")
-
     monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
     monkeypatch.setattr(cli_main, "resolve_or_setup_config", lambda _args: cfg)
-    monkeypatch.setattr(cli_main, "ModSyncService", FakeService)
+    monkeypatch.setattr(cli_main, "ModSyncService", _FakeService.factory(events=events))
 
     rc = cli_main.main(["--headless"])
 
@@ -338,26 +392,20 @@ def test_cli_headless_stops_service_on_keyboard_interrupt(
     tmp_path: Path,
 ) -> None:
     cfg = Config(server_url="https://mods.example", mods_dir=str(tmp_path / "mods"))
-    events: list[str] = []
-
-    class FakeService:
-        def __init__(self, _cfg: Config, *, on_status: Any = None) -> None:
-            pass
-
-        async def run(self) -> None:
-            raise KeyboardInterrupt
-
-        def stop(self) -> None:
-            events.append("stop")
+    events: list[object] = []
 
     monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
     monkeypatch.setattr(cli_main, "resolve_or_setup_config", lambda _args: cfg)
-    monkeypatch.setattr(cli_main, "ModSyncService", FakeService)
+    monkeypatch.setattr(
+        cli_main,
+        "ModSyncService",
+        _FakeService.factory(events=events, run_error=KeyboardInterrupt()),
+    )
 
     rc = cli_main.main(["--headless"])
 
     assert rc == 0
-    assert events == ["stop"]
+    assert events == [("init", cfg), "run", "stop"]
 
 
 @pytest.mark.parametrize(
@@ -425,25 +473,16 @@ def test_cli_sync_once_auth_error_leaves_mods_dir_untouched(
         mods_dir=str(mods_dir),
         client_token="wrong-token",
     )
-
-    class ErrorSyncer:
-        def __init__(self, **_kwargs: object) -> None:
-            pass
-
-        def sync_once(self) -> SyncResult:
-            return SyncResult(
-                status=SyncStatus.ERROR,
-                version="",
-                mod_count=0,
-                message="Unauthorized (401)",
-            )
-
-        def close(self) -> None:
-            pass
+    auth_error_result = SyncResult(
+        status=SyncStatus.ERROR,
+        version="",
+        mod_count=0,
+        message="Unauthorized (401)",
+    )
 
     monkeypatch.setattr(cli_main, "cleanup_old_binary", lambda: None)
     monkeypatch.setattr(cli_main, "resolve_or_setup_config", lambda _args: cfg)
-    monkeypatch.setattr(cli_main, "ModSyncer", ErrorSyncer)
+    monkeypatch.setattr(cli_main, "ModSyncer", _FakeSyncer.factory(result=auth_error_result))
 
     rc = cli_main.main(["--sync-once"])
 

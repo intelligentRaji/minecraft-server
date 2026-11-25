@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
 
 MOD_DIR = Path(__file__).resolve().parent
 MODS_DIR = MOD_DIR.parent
@@ -61,7 +60,7 @@ FORBIDDEN_NAMES: frozenset[str] = frozenset({
 FORBIDDEN_SUFFIXES: tuple[str, ...] = DEFAULT_FORBIDDEN_SUFFIXES
 
 
-def _validate_override_value(value: Any, path: str) -> list[str]:
+def _validate_override_value(value: object, path: str) -> list[str]:
     """Recursively validate a JSON value inside `server-plugin-overrides.json`."""
     if value is None or isinstance(value, (bool, str)):
         return []
@@ -95,7 +94,7 @@ def _validate_override_value(value: Any, path: str) -> list[str]:
     ]
 
 
-def validate_server_plugin_overrides(data: Any) -> list[str]:
+def validate_server_plugin_overrides(data: object) -> list[str]:
     """Validate `server-plugin-overrides.json` structure and override values."""
     if not isinstance(data, dict):
         return [
@@ -116,7 +115,7 @@ def validate_server_plugin_overrides(data: Any) -> list[str]:
     return errors
 
 
-def validate_sort_order(data: Any) -> list[str]:
+def validate_sort_order(data: object) -> list[str]:
     """Validate `sort-order.json` structure, provider ID keys, and priority values."""
     if not isinstance(data, dict):
         return [

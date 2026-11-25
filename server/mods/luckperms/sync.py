@@ -27,6 +27,8 @@ from _bridge import (  # noqa: E402
     run_sync_cli,
     scan_mapping_for_secrets,
     scan_text_for_secrets,
+)
+from _bridge import (  # noqa: E402
     sync_static_file as bridge_sync_static_file,
 )
 
@@ -76,10 +78,9 @@ def strip_hocon_comments(text: str) -> str:
                 escaped = True
             elif ch == '"':
                 in_quotes = not in_quotes
-            elif not in_quotes:
-                if ch == "#" or (ch == "/" and i + 1 < len(line) and line[i + 1] == "/"):
-                    cut_idx = i
-                    break
+            elif not in_quotes and (ch == "#" or (ch == "/" and i + 1 < len(line) and line[i + 1] == "/")):
+                cut_idx = i
+                break
             i += 1
         out_lines.append(line[:cut_idx])
     return "\n".join(out_lines)
