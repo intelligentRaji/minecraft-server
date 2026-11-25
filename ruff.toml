@@ -1,5 +1,6 @@
 target-version = "py312"
 line-length = 120
+extend-include = ["*.spec"]
 extend-exclude = [
   "server/data",
   "client/build",
@@ -39,6 +40,7 @@ required-imports = ["from __future__ import annotations"]
 
 [lint.per-file-ignores]
 "**/__init__.py" = ["I002"]
+"*.spec" = ["F821"]
 "server/**/*.py" = ["PT", "TID251"]
 "ci/**/*.py" = ["PT", "TID251"]
 "modsync_api/**/*.py" = ["PT001"]
