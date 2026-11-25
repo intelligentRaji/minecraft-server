@@ -8,7 +8,7 @@ import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import IO, Any, Protocol
 
 ENV_NO_PROXY = "NO_PROXY"
 ENV_NO_PROXY_LOWER = "no_proxy"
@@ -23,6 +23,8 @@ PROXY_ENV_VARS = (
     "all_proxy",
 )
 
+StdioTarget = int | IO[Any] | None
+
 
 class ProcessSpawner(Protocol):
     """Callable fixture protocol for spawning tracked ModSync subprocesses."""
@@ -32,9 +34,9 @@ class ProcessSpawner(Protocol):
         args: Sequence[str | Path],
         *,
         env: dict[str, str] | None = None,
-        stdin: Any = subprocess.DEVNULL,
-        stdout: Any = None,
-        stderr: Any = None,
+        stdin: StdioTarget = subprocess.DEVNULL,
+        stdout: StdioTarget = None,
+        stderr: StdioTarget = None,
         log_name: str | None = None,
     ) -> subprocess.Popen[str]: ...
 

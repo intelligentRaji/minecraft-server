@@ -56,7 +56,7 @@ KEEP_CURIOS_VALUES: frozenset[str] = frozenset({"ON", "DEFAULT", "OFF"})
 
 
 def _check_exact_keys(
-    table: Any,
+    table: object,
     label: str,
     required_keys: tuple[str, ...],
     rationale: str,
@@ -85,7 +85,7 @@ def _validate_int_range(
     return []
 
 
-def validate_curios_common(data: Any) -> list[str]:
+def validate_curios_common(data: object) -> list[str]:
     """Validate schema and types for `config/curios-common.toml`."""
     errors = _check_exact_keys(
         data,
@@ -107,7 +107,7 @@ def validate_curios_common(data: Any) -> list[str]:
     return errors
 
 
-def validate_curios_server(data: Any) -> list[str]:
+def validate_curios_server(data: object) -> list[str]:
     """Validate schema, types, and ranges for `world/serverconfig/curios-server.toml`."""
     errors = _check_exact_keys(
         data,

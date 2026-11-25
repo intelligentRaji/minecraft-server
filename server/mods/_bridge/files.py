@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import stat
@@ -95,10 +96,8 @@ def atomic_write_bytes(
             os.fsync(handle.fileno())
         os.chmod(tmp_path, mode)
         if target_stat is not None and hasattr(os, "chown"):
-            try:
+            with contextlib.suppress(PermissionError):
                 os.chown(tmp_path, target_stat.st_uid, target_stat.st_gid)
-            except PermissionError:
-                pass
         os.replace(tmp_path, target_path)
     except Exception:
         if tmp_path.exists():

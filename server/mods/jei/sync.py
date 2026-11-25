@@ -14,7 +14,6 @@ from __future__ import annotations
 import configparser
 import sys
 from pathlib import Path
-from typing import Any
 
 MOD_DIR = Path(__file__).resolve().parent
 MODS_DIR = MOD_DIR.parent
@@ -64,7 +63,7 @@ VALID_BOOLEAN_STRINGS: frozenset[str] = frozenset({"true", "false"})
 
 
 def _check_exact_keys(
-    table: Any,
+    table: object,
     label: str,
     required_keys: tuple[str, ...],
     rationale: str,
@@ -74,7 +73,7 @@ def _check_exact_keys(
     return [f"{err} ({rationale})" for err in base_errors]
 
 
-def validate_jei_ini(data: Any, rel_path: str) -> list[str]:
+def validate_jei_ini(data: object, rel_path: str) -> list[str]:
     """Validate section structure, permission keys, and strict boolean string values for a JEI server INI file."""
     errors = _check_exact_keys(
         data,

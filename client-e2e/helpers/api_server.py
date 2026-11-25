@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 import httpx
 
 from .env import build_local_loopback_env
-from .fixtures import DefaultMods, MODPACK_CATEGORIES, ModFixture, compute_sha256
+from .fixtures import MODPACK_CATEGORIES, DefaultMods, ModFixture, compute_sha256
 from .polling import FatalPollError, terminate_process_tree, wait_until
 
 ENV_MODPACK_DIR = "MODPACK_DIR"

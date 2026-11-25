@@ -73,7 +73,7 @@ def _validate_bound(
     return bound, []
 
 
-def validate_attributefix_config(data: Any) -> list[str]:
+def validate_attributefix_config(data: object) -> list[str]:
     """Validate schema and clamp range invariants for `attributefix.json`."""
     root_errors = check_table_keys(data, "attributefix.json", ("attributes",))
     if root_errors:
@@ -83,6 +83,7 @@ def validate_attributefix_config(data: Any) -> list[str]:
             for err in root_errors
         ]
 
+    assert isinstance(data, dict)
     attributes = data["attributes"]
     if not isinstance(attributes, dict):
         return [

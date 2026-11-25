@@ -9,17 +9,17 @@ extend-exclude = [
 
 [lint]
 select = [
-  "E",    # pycodestyle errors
-  "W",    # pycodestyle warnings
-  "F",    # pyflakes
-  "I",    # isort (import sorting + required future annotations)
-  "UP",   # pyupgrade (modern Python >=3.11 syntax & typing)
-  "B",    # flake8-bugbear
-  "SIM",  # flake8-simplify
-  "PT",   # flake8-pytest-style
-  "ANN",  # flake8-annotations
-  "TID",  # flake8-tidy-imports (banned-api)
-  "RUF",  # Ruff-specific rules
+  "E",      # pycodestyle errors
+  "W",      # pycodestyle warnings
+  "F",      # pyflakes
+  "I",      # isort (import sorting + required future annotations)
+  "UP",     # pyupgrade (modern Python >=3.11 syntax & typing)
+  "B",      # flake8-bugbear
+  "SIM",    # flake8-simplify
+  "PT",     # flake8-pytest-style
+  "ANN",    # flake8-annotations
+  "TID251", # flake8-tidy-imports (banned-api)
+  "RUF",    # Ruff-specific rules
 ]
 
 [lint.isort]
@@ -39,6 +39,6 @@ required-imports = ["from __future__ import annotations"]
 
 [lint.per-file-ignores]
 "**/__init__.py" = ["I002"]
-"server/**/*.py" = ["TID251"]
-"ci/**/*.py" = ["TID251"]
+"server/**/*.py" = ["PT", "TID251"]
+"ci/**/*.py" = ["PT", "TID251"]
 "modsync_api/**/*.py" = ["PT001"]

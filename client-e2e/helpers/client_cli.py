@@ -105,7 +105,8 @@ class TrackedRelaunch:
         if self._win_tracker is not None and self._win_parent_pid is not None:
             return self._win_tracker.wait_for_pid(self._win_parent_pid, timeout=timeout)
 
-        assert self._wrapper_proc is not None and self._rc_file is not None
+        assert self._wrapper_proc is not None
+        assert self._rc_file is not None
         wrapper = self._wrapper_proc
         rc_file = self._rc_file
 

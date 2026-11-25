@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from helpers.api_server import ModSyncTestServer
 from helpers.client_cli import (
     EXIT_CODE_SUCCESS,
@@ -82,45 +83,47 @@ def test_self_update_relaunch_boots_tray_cleanly_without_pyinstaller_env_leak(
     )
 
     expected_user_agent = f"ModSync/{DEFAULT_FAKE_RELEASE_VERSION}"
-    with FakeGitHubReleasesServer(
-        version=DEFAULT_FAKE_RELEASE_VERSION,
-        asset_name=client_cli.platform_asset_name,
-        asset_payload=updated_modsync_bin.read_bytes(),
-    ) as fake_github:
-        with client_cli.spawn_tracked_relaunch(
+    with (
+        FakeGitHubReleasesServer(
+            version=DEFAULT_FAKE_RELEASE_VERSION,
+            asset_name=client_cli.platform_asset_name,
+            asset_payload=updated_modsync_bin.read_bytes(),
+        ) as fake_github,
+        client_cli.spawn_tracked_relaunch(
             github_api_url=fake_github.base_url,
             binary=target_bin,
             env_overrides=dialog_driver.prepare_env(isolated_env.env),
-        ) as relaunch:
-            rc = relaunch.wait_parent()
-            assert rc == EXIT_CODE_SUCCESS, (
-                f"--update --relaunch failed (rc={rc}): {relaunch.read_stderr()!r}"
+        ) as relaunch,
+    ):
+        rc = relaunch.wait_parent()
+        assert rc == EXIT_CODE_SUCCESS, (
+            f"--update --relaunch failed (rc={rc}): {relaunch.read_stderr()!r}"
+        )
+
+        def _relaunched_ready() -> bool:
+            stderr_text = relaunch.read_stderr()
+            for marker in TRAY_CRASH_MARKERS:
+                if marker in stderr_text:
+                    raise FatalPollError(f"Relaunched ModSync tray crashed:\n{stderr_text}")
+            return (
+                relaunch.is_child_running()
+                and api_server.connected_clients() >= 1
+                and expected_user_agent in fake_github.user_agents_seen
             )
 
-            def _relaunched_ready() -> bool:
-                stderr_text = relaunch.read_stderr()
-                for marker in TRAY_CRASH_MARKERS:
-                    if marker in stderr_text:
-                        raise FatalPollError(f"Relaunched ModSync tray crashed:\n{stderr_text}")
-                return (
-                    relaunch.is_child_running()
-                    and api_server.connected_clients() >= 1
-                    and expected_user_agent in fake_github.user_agents_seen
-                )
+        try:
+            wait_until(
+                _relaunched_ready,
+                timeout=TIMEOUT_SYNC,
+                description="relaunched v99.0.0 tray process to boot, check updates, and connect WS",
+            )
+        except TimeoutError as exc:
+            raise TimeoutError(
+                f"{exc}; user_agents={fake_github.user_agents_seen!r}, "
+                f"stderr={relaunch.read_stderr()!r}"
+            ) from exc
 
-            try:
-                wait_until(
-                    _relaunched_ready,
-                    timeout=TIMEOUT_SYNC,
-                    description="relaunched v99.0.0 tray process to boot, check updates, and connect WS",
-                )
-            except TimeoutError as exc:
-                raise TimeoutError(
-                    f"{exc}; user_agents={fake_github.user_agents_seen!r}, "
-                    f"stderr={relaunch.read_stderr()!r}"
-                ) from exc
-
-            _assert_clean_tray_logs(relaunch.read_stderr(), context="relaunched tray")
+        _assert_clean_tray_logs(relaunch.read_stderr(), context="relaunched tray")
 
 
 def test_tray_mode_boots_checks_updates_and_applies_live_ws_update(

@@ -123,7 +123,7 @@ VALID_CONFIG: dict[str, Any] = {
 }
 
 
-def _format_value(value: Any) -> str:
+def _format_value(value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, float):

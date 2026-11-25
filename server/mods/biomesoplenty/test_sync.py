@@ -284,7 +284,10 @@ class BiomesOPlentySyncTest(unittest.TestCase):
             self.sync.validate_configs()
         self.assertIn("invalid TOML", str(ctx_toml.exception))
 
-        gen_path.write_text("[nether]\nbop_nether_region_weight = 13\nbop_nether_rare_region_weight = 2\n", encoding="utf-8")
+        gen_path.write_text(
+            "[nether]\nbop_nether_region_weight = 13\nbop_nether_rare_region_weight = 2\n",
+            encoding="utf-8",
+        )
         with self.assertRaises(ValueError) as ctx_missing_table:
             self.sync.validate_configs()
         self.assertIn("missing required keys ['overworld']", str(ctx_missing_table.exception))

@@ -140,14 +140,38 @@ class SkillTreeSyncTest(unittest.TestCase):
             ('"Maximum skill points" = 85', '"Maximum skill points" = 0', "must be an integer in 1..1000"),
             ('"Maximum skill points" = 85', '"Maximum skill points" = 1001', "must be an integer in 1..1000"),
             ('"Maximum skill points" = 85', '"Maximum skill points" = true', "must be an integer in 1..1000"),
-            ('"First skill point cost" = 15', '"First skill point cost" = 0', '"First skill point cost" must be an integer > 0'),
-            ('"First skill point cost" = 15', '"First skill point cost" = false', '"First skill point cost" must be an integer > 0'),
-            ('"Last skill point cost" = 1400', '"Last skill point cost" = 0', '"Last skill point cost" must be an integer > 0'),
-            ('"Use skill points costs array" = false', '"Use skill points costs array" = "yes"', '"Use skill points costs array" must be a boolean'),
+            (
+                '"First skill point cost" = 15',
+                '"First skill point cost" = 0',
+                '"First skill point cost" must be an integer > 0',
+            ),
+            (
+                '"First skill point cost" = 15',
+                '"First skill point cost" = false',
+                '"First skill point cost" must be an integer > 0',
+            ),
+            (
+                '"Last skill point cost" = 1400',
+                '"Last skill point cost" = 0',
+                '"Last skill point cost" must be an integer > 0',
+            ),
+            (
+                '"Use skill points costs array" = false',
+                '"Use skill points costs array" = "yes"',
+                '"Use skill points costs array" must be a boolean',
+            ),
             ('"Show chat messages" = true', '"Show chat messages" = 1', '"Show chat messages" must be a boolean'),
-            ('"Enable exprerience exchange for skill points" = true', '"Enable exprerience exchange for skill points" = "true"', '"Enable exprerience exchange for skill points" must be a boolean'),
+            (
+                '"Enable exprerience exchange for skill points" = true',
+                '"Enable exprerience exchange for skill points" = "true"',
+                '"Enable exprerience exchange for skill points" must be a boolean',
+            ),
             ('"Levelup costs" = [15,', '"Levelup costs" = [0,', '"Levelup costs"[0] must be an integer > 0'),
-            ('"Levelup costs" = [15, 19,', '"Levelup costs" = [15,', '"Levelup costs" length (84) must equal "Maximum skill points" (85)'),
+            (
+                '"Levelup costs" = [15, 19,',
+                '"Levelup costs" = [15,',
+                '"Levelup costs" length (84) must equal "Maximum skill points" (85)',
+            ),
         ]
         for old, new, expected_msg in cases:
             self.assertIn(old, orig)
@@ -162,17 +186,61 @@ class SkillTreeSyncTest(unittest.TestCase):
         orig = common_path.read_text(encoding="utf-8")
 
         cases = [
-            ('"Base drop chance" = 0.15', '"Base drop chance" = -0.1', '"Base drop chance" must be a number in 0.0..1.0'),
-            ('"Base drop chance" = 0.15', '"Base drop chance" = 1.1', '"Base drop chance" must be a number in 0.0..1.0'),
-            ('"Base drop chance" = 0.15', '"Base drop chance" = true', '"Base drop chance" must be a number in 0.0..1.0'),
-            ('"Base drop chance" = 0.15', '"Base drop chance" = nan', '"Base drop chance" must be a number in 0.0..1.0'),
-            ('"IDs of items that shouldn\'t have sockets" = []', '"IDs of items that shouldn\'t have sockets" = [""]', "must be a list of non-empty strings"),
-            ('"IDs of items that shouldn\'t have sockets" = []', '"IDs of items that shouldn\'t have sockets" = "minecraft:stick"', "must be a list of non-empty strings"),
-            ('"Amnesia scroll penalty" = 0.2', '"Amnesia scroll penalty" = 1.5', '"Amnesia scroll penalty" must be a number in 0.0..1.0'),
-            ('"Drop amnesia scrolls from the Ender Dragon" = true', '"Drop amnesia scrolls from the Ender Dragon" = 0', '"Drop amnesia scrolls from the Ender Dragon" must be a boolean'),
-            ('"Grindstone experience multiplier" = 0.1', '"Grindstone experience multiplier" = -0.05', '"Grindstone experience multiplier" must be a number in 0.0..1.0'),
-            ('"Effects duration multiplier" = 1.0', '"Effects duration multiplier" = 2.1', '"Effects duration multiplier" must be a number in 0.0..2.0'),
-            ('"Effects strength multiplier" = 1.0', '"Effects strength multiplier" = -0.1', '"Effects strength multiplier" must be a number in 0.0..2.0'),
+            (
+                '"Base drop chance" = 0.15',
+                '"Base drop chance" = -0.1',
+                '"Base drop chance" must be a number in 0.0..1.0',
+            ),
+            (
+                '"Base drop chance" = 0.15',
+                '"Base drop chance" = 1.1',
+                '"Base drop chance" must be a number in 0.0..1.0',
+            ),
+            (
+                '"Base drop chance" = 0.15',
+                '"Base drop chance" = true',
+                '"Base drop chance" must be a number in 0.0..1.0',
+            ),
+            (
+                '"Base drop chance" = 0.15',
+                '"Base drop chance" = nan',
+                '"Base drop chance" must be a number in 0.0..1.0',
+            ),
+            (
+                '"IDs of items that shouldn\'t have sockets" = []',
+                '"IDs of items that shouldn\'t have sockets" = [""]',
+                "must be a list of non-empty strings",
+            ),
+            (
+                '"IDs of items that shouldn\'t have sockets" = []',
+                '"IDs of items that shouldn\'t have sockets" = "minecraft:stick"',
+                "must be a list of non-empty strings",
+            ),
+            (
+                '"Amnesia scroll penalty" = 0.2',
+                '"Amnesia scroll penalty" = 1.5',
+                '"Amnesia scroll penalty" must be a number in 0.0..1.0',
+            ),
+            (
+                '"Drop amnesia scrolls from the Ender Dragon" = true',
+                '"Drop amnesia scrolls from the Ender Dragon" = 0',
+                '"Drop amnesia scrolls from the Ender Dragon" must be a boolean',
+            ),
+            (
+                '"Grindstone experience multiplier" = 0.1',
+                '"Grindstone experience multiplier" = -0.05',
+                '"Grindstone experience multiplier" must be a number in 0.0..1.0',
+            ),
+            (
+                '"Effects duration multiplier" = 1.0',
+                '"Effects duration multiplier" = 2.1',
+                '"Effects duration multiplier" must be a number in 0.0..2.0',
+            ),
+            (
+                '"Effects strength multiplier" = 1.0',
+                '"Effects strength multiplier" = -0.1',
+                '"Effects strength multiplier" must be a number in 0.0..2.0',
+            ),
         ]
         for old, new, expected_msg in cases:
             self.assertIn(old, orig)
@@ -200,11 +268,31 @@ class SkillTreeSyncTest(unittest.TestCase):
         cases = [
             ('"Maximum skill points" = 100', '"Maximum skill points" = 1', "must be an integer > 1"),
             ('"Maximum skill points" = 100', '"Maximum skill points" = true', "must be an integer > 1"),
-            ('"First skill point cost" = 15', '"First skill point cost" = 0', '"First skill point cost" must be an integer > 0'),
-            ('"Last skill point cost" = 1400', '"Last skill point cost" = -1', '"Last skill point cost" must be an integer > 0'),
-            ('"Levelup costs" = [15, 19,', '"Levelup costs" = [15,', '"Levelup costs" length (99) must equal "Maximum skill points" (100)'),
-            ('"Amnesia scroll penalty" = 0.2', '"Amnesia scroll penalty" = 1.2', '"Amnesia scroll penalty" must be a number in 0.0..1.0'),
-            ('"Grindstone experience multiplier" = 0.1', '"Grindstone experience multiplier" = 1.5', '"Grindstone experience multiplier" must be a number in 0.0..1.0'),
+            (
+                '"First skill point cost" = 15',
+                '"First skill point cost" = 0',
+                '"First skill point cost" must be an integer > 0',
+            ),
+            (
+                '"Last skill point cost" = 1400',
+                '"Last skill point cost" = -1',
+                '"Last skill point cost" must be an integer > 0',
+            ),
+            (
+                '"Levelup costs" = [15, 19,',
+                '"Levelup costs" = [15,',
+                '"Levelup costs" length (99) must equal "Maximum skill points" (100)',
+            ),
+            (
+                '"Amnesia scroll penalty" = 0.2',
+                '"Amnesia scroll penalty" = 1.2',
+                '"Amnesia scroll penalty" must be a number in 0.0..1.0',
+            ),
+            (
+                '"Grindstone experience multiplier" = 0.1',
+                '"Grindstone experience multiplier" = 1.5',
+                '"Grindstone experience multiplier" must be a number in 0.0..1.0',
+            ),
         ]
         for old, new, expected_msg in cases:
             self.assertIn(old, orig)

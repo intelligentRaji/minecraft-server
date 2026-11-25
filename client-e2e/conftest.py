@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
@@ -9,7 +10,7 @@ import subprocess
 import sys
 from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import pytest
 
@@ -20,7 +21,7 @@ from helpers.client_cli import (
     ModSyncCli,
 )
 from helpers.dialog_driver import BaseDialogDriver, create_dialog_driver, is_ci_environment
-from helpers.env import IsolatedClientEnv, ProcessSpawner, build_local_loopback_env
+from helpers.env import IsolatedClientEnv, ProcessSpawner, StdioTarget, build_local_loopback_env
 from helpers.polling import run_with_tree_timeout, terminate_process_tree
 from helpers.win_installer import (
     WIN_APP_EXE_NAME,
@@ -226,7 +227,7 @@ def updated_modsync_bin(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return built_bin
 
 
-@pytest.fixture()
+@pytest.fixture
 def api_server(tmp_path: Path) -> Iterator[ModSyncTestServer]:
     """Start an ephemeral modsync_api server with fixture server-client & client-only mods."""
     server = create_started_server(tmp_path / "modpack")
@@ -236,7 +237,7 @@ def api_server(tmp_path: Path) -> Iterator[ModSyncTestServer]:
         server.close()
 
 
-@pytest.fixture()
+@pytest.fixture
 def isolated_env(tmp_path: Path) -> IsolatedClientEnv:
     """Create isolated HOME/APPDATA/XDG_CONFIG_HOME and a pre-seeded detectable .minecraft dir."""
     root = tmp_path / "client_env"
@@ -297,45 +298,47 @@ def isolated_env(tmp_path: Path) -> IsolatedClientEnv:
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def process_spawner(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[ProcessSpawner]:
     """Spawn client processes with per-test log files and guarantee process-tree teardown."""
     spawned: list[subprocess.Popen[str]] = []
     logs_dir = tmp_path / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     tracked_logs: list[Path] = []
-    setattr(request.node, "_e2e_logs_dir", logs_dir)
-    setattr(request.node, "_e2e_log_paths", tracked_logs)
+    request.node._e2e_logs_dir = logs_dir
+    request.node._e2e_log_paths = tracked_logs
     counter = 0
 
     def _spawn(
         args: Sequence[str | Path],
         *,
         env: dict[str, str] | None = None,
-        stdin: Any = subprocess.DEVNULL,
-        stdout: Any = None,
-        stderr: Any = None,
+        stdin: StdioTarget = subprocess.DEVNULL,
+        stdout: StdioTarget = None,
+        stderr: StdioTarget = None,
         log_name: str | None = None,
     ) -> subprocess.Popen[str]:
         nonlocal counter
         prefix = log_name or f"proc_{counter}"
         counter += 1
 
-        opened: list[Any] = []
+        opened: list[IO[str]] = []
         effective_stdout = stdout
         effective_stderr = stderr
         if effective_stdout is None:
             out_path = logs_dir / f"{prefix}.stdout.log"
-            effective_stdout = out_path.open("w", encoding="utf-8", errors="replace")
-            opened.append(effective_stdout)
+            out_handle = out_path.open("w", encoding="utf-8", errors="replace")
+            effective_stdout = out_handle
+            opened.append(out_handle)
             tracked_logs.append(out_path)
         elif hasattr(effective_stdout, "name"):
             tracked_logs.append(Path(str(effective_stdout.name)))
 
         if effective_stderr is None:
             err_path = logs_dir / f"{prefix}.stderr.log"
-            effective_stderr = err_path.open("w", encoding="utf-8", errors="replace")
-            opened.append(effective_stderr)
+            err_handle = err_path.open("w", encoding="utf-8", errors="replace")
+            effective_stderr = err_handle
+            opened.append(err_handle)
             tracked_logs.append(err_path)
         elif hasattr(effective_stderr, "name"):
             tracked_logs.append(Path(str(effective_stderr.name)))
@@ -352,10 +355,8 @@ def process_spawner(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[
             )
         finally:
             for handle in opened:
-                try:
+                with contextlib.suppress(OSError):
                     handle.close()
-                except OSError:
-                    pass
         spawned.append(proc)
         return proc
 
@@ -370,10 +371,8 @@ def process_spawner(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[
                 else:
                     for pipe in (proc.stdin, proc.stdout, proc.stderr):
                         if pipe is not None:
-                            try:
+                            with contextlib.suppress(OSError, ValueError):
                                 pipe.close()
-                            except (OSError, ValueError):
-                                pass
             except BaseException as exc:
                 if first_error is None:
                     first_error = exc
@@ -381,7 +380,7 @@ def process_spawner(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[
             raise first_error
 
 
-@pytest.fixture()
+@pytest.fixture
 def client_cli(
     modsync_bin: Path,
     isolated_env: IsolatedClientEnv,
@@ -398,12 +397,12 @@ def client_cli(
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def dialog_driver(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[BaseDialogDriver]:
     """Provide platform GUI dialog automation driver (or fail in CI / skip locally if missing)."""
     logs_dir = tmp_path / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
-    setattr(request.node, "_e2e_logs_dir", logs_dir)
+    request.node._e2e_logs_dir = logs_dir
     use_live = bool(request.config.getoption(OPT_USE_LIVE_DISPLAY))
     try:
         driver = create_dialog_driver(use_live_display=use_live, log_dir=logs_dir)
@@ -457,10 +456,8 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]) -> 
     driver = funcargs.get("dialog_driver")
     if isinstance(driver, BaseDialogDriver) and logs_dir is not None:
         logs_dir.mkdir(parents=True, exist_ok=True)
-        try:
+        with contextlib.suppress(Exception):
             driver.capture_screenshot(logs_dir / f"{report.when}_failure.png")
-        except Exception:
-            pass
 
     files = _collect_failure_files(item, logs_dir)
     for file_path in files:
@@ -484,7 +481,5 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]) -> 
         dest_dir = Path(artifacts_root) / safe_id
         dest_dir.mkdir(parents=True, exist_ok=True)
         for file_path in files:
-            try:
+            with contextlib.suppress(OSError):
                 shutil.copy2(file_path, dest_dir / file_path.name)
-            except OSError:
-                pass

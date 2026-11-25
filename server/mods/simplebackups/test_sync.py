@@ -127,7 +127,10 @@ class SimpleBackupsSyncTest(unittest.TestCase):
         (self.configs_dir / "simplebackups-server.toml").unlink()
         with self.assertRaises(ValueError) as ctx_missing:
             self.sync.validate_configs()
-        self.assertIn("Missing expected config files in configs/: simplebackups-server.toml", str(ctx_missing.exception))
+        self.assertIn(
+            "Missing expected config files in configs/: simplebackups-server.toml",
+            str(ctx_missing.exception),
+        )
 
     def test_invariant_output_path_must_be_simplebackups(self) -> None:
         """outputPath traversal, absolute paths, or non-default paths must fail with data/ isolation rationale."""
@@ -169,7 +172,11 @@ class SimpleBackupsSyncTest(unittest.TestCase):
             ("timer = 120", "timer = 0", "timer must be an integer in 1..32767"),
             ("timer = 120", "timer = 32768", "timer must be an integer in 1..32767"),
             ("fullBackupTimer = 525960", "fullBackupTimer = 0", "fullBackupTimer must be an integer in 1..5259600"),
-            ("fullBackupTimer = 525960", "fullBackupTimer = 5259601", "fullBackupTimer must be an integer in 1..5259600"),
+            (
+                "fullBackupTimer = 525960",
+                "fullBackupTimer = 5259601",
+                "fullBackupTimer must be an integer in 1..5259600",
+            ),
             ("compressionLevel = -1", "compressionLevel = -2", "compressionLevel must be an integer in -1..9"),
             ("compressionLevel = -1", "compressionLevel = 10", "compressionLevel must be an integer in -1..9"),
         ]

@@ -66,7 +66,7 @@ class CoreCommandsSyncTest(unittest.TestCase):
         self.assertEqual(set(loaded.keys()), {"config.json", "rules.json"})
 
     def test_initial_placement_mode_preservation_and_idempotency(self) -> None:
-        """First run places static files; second run is idempotent; updates preserve file mode and leave runtime files untouched."""
+        """First run places static files, repeats cleanly, preserves mode, and leaves runtime files untouched."""
         cc_dir = self.data_dir / "config" / "corecommands"
         cc_dir.mkdir(parents=True, exist_ok=True)
         homes_file = cc_dir / "homes.json"

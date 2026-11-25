@@ -185,9 +185,17 @@ class LuckPermsSyncTest(unittest.TestCase):
 
         cases = [
             ('  password = ""', '  password = "supersecret"', "data.password"),
-            ('  mongodb-connection-uri = ""', '  mongodb-connection-uri = "mongodb://user:pass@host/db"', "data.mongodb-connection-uri"),
+            (
+                '  mongodb-connection-uri = ""',
+                '  mongodb-connection-uri = "mongodb://user:pass@host/db"',
+                "data.mongodb-connection-uri",
+            ),
             ('  password = "guest"', '  password = "custom-rabbit-pass"', "rabbitmq.password"),
-            ('  enabled = false\n  address = "localhost"\n  vhost = "/"', '  enabled = true\n  address = "localhost"\n  vhost = "/"', "rabbitmq.password"),
+            (
+                '  enabled = false\n  address = "localhost"\n  vhost = "/"',
+                '  enabled = true\n  address = "localhost"\n  vhost = "/"',
+                "rabbitmq.password",
+            ),
         ]
         for old, new, expected_msg in cases:
             self.assertIn(old, orig)

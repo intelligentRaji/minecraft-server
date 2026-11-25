@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import os
 import subprocess
@@ -234,24 +235,22 @@ class WinJobProcessTracker:
         si.cb = ctypes.sizeof(STARTUPINFOW)
         pi = PROCESS_INFORMATION()
 
-        opened_files: list[Any] = []
+        devnull_path = Path(os.devnull)
         inherit_handles = False
-        try:
+        with contextlib.ExitStack() as stack:
             if stdout is not None or stderr is not None:
                 inherit_handles = True
                 si.dwFlags |= STARTF_USESTDHANDLES
-                null_in = open(os.devnull, "rb")
-                opened_files.append(null_in)
+                null_in = stack.enter_context(devnull_path.open("rb"))
                 in_h = msvcrt.get_osfhandle(null_in.fileno())
                 KERNEL32.SetHandleInformation(in_h, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)
                 si.hStdInput = in_h
 
                 if stdout is not None:
                     stdout.parent.mkdir(parents=True, exist_ok=True)
-                    out_f = stdout.open("ab")
+                    out_f = stack.enter_context(stdout.open("ab"))
                 else:
-                    out_f = open(os.devnull, "wb")
-                opened_files.append(out_f)
+                    out_f = stack.enter_context(devnull_path.open("wb"))
                 out_h = msvcrt.get_osfhandle(out_f.fileno())
                 KERNEL32.SetHandleInformation(out_h, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)
                 si.hStdOutput = out_h
@@ -261,13 +260,11 @@ class WinJobProcessTracker:
                         err_h = out_h
                     else:
                         stderr.parent.mkdir(parents=True, exist_ok=True)
-                        err_f = stderr.open("ab")
-                        opened_files.append(err_f)
+                        err_f = stack.enter_context(stderr.open("ab"))
                         err_h = msvcrt.get_osfhandle(err_f.fileno())
                         KERNEL32.SetHandleInformation(err_h, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)
                 else:
-                    err_f = open(os.devnull, "wb")
-                    opened_files.append(err_f)
+                    err_f = stack.enter_context(devnull_path.open("wb"))
                     err_h = msvcrt.get_osfhandle(err_f.fileno())
                     KERNEL32.SetHandleInformation(err_h, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)
                 si.hStdError = err_h
@@ -286,12 +283,6 @@ class WinJobProcessTracker:
             )
             if not ok:
                 _raise_last_winerror(f"CreateProcessW({args[0]})")
-        finally:
-            for f in opened_files:
-                try:
-                    f.close()
-                except OSError:
-                    pass
 
         pid = int(pi.dwProcessId)
         try:

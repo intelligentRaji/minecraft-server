@@ -63,7 +63,7 @@ EXPECTED_FAKE_PLAYER_KEYS: tuple[str, ...] = ("fakePlayerId",)
 
 
 class _IntSpec:
-    __slots__ = ("min_val", "max_val", "rationale")
+    __slots__ = ("max_val", "min_val", "rationale")
 
     def __init__(
         self,
@@ -80,7 +80,7 @@ class _IntSpec:
 
 
 class _FloatSpec:
-    __slots__ = ("min_val", "max_val", "rationale")
+    __slots__ = ("max_val", "min_val", "rationale")
 
     def __init__(self, min_val: float, max_val: float, rationale: str) -> None:
         self.min_val = min_val
@@ -89,7 +89,7 @@ class _FloatSpec:
 
 
 class _IntListSpec:
-    __slots__ = ("length", "min_val", "max_val", "rationale")
+    __slots__ = ("length", "max_val", "min_val", "rationale")
 
     def __init__(
         self,
@@ -237,7 +237,7 @@ FLOWER_SCHEMA: dict[str, dict[str, FieldSpec]] = {
 
 
 def _check_section_keys(
-    table: Any,
+    table: object,
     expected_keys: tuple[str, ...],
     section_label: str,
 ) -> tuple[dict[str, Any] | None, list[str]]:
@@ -256,6 +256,7 @@ def _check_section_keys(
         return None if not isinstance(table, dict) else table, [
             f"{err} ({rationale})" for err in raw_errors
         ]
+    assert isinstance(table, dict)
     return table, []
 
 
@@ -497,7 +498,7 @@ def _validate_flowers(flower_table: dict[str, Any]) -> list[str]:
     return errors
 
 
-def validate_extrabotany_common(data: Any) -> list[str]:
+def validate_extrabotany_common(data: object) -> list[str]:
     """Validate schema, types, ranges, and invariants for `config/extrabotany-common.toml`."""
     root, errors = _check_section_keys(data, EXPECTED_ROOT_KEYS, "root")
     if root is None:

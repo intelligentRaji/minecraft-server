@@ -202,7 +202,10 @@ class DynamicTreesSyncTest(unittest.TestCase):
         )
         with self.assertRaises(ValueError) as ctx_str:
             self.sync.validate_configs()
-        self.assertIn("[misc].biocharBrewingBase invariant violation: must be a non-empty string", str(ctx_str.exception))
+        self.assertIn(
+            "[misc].biocharBrewingBase invariant violation: must be a non-empty string",
+            str(ctx_str.exception),
+        )
 
     def test_server_enums_ranges_and_types_enforced(self) -> None:
         """Server TOML must enforce root/table ranges, enum values, blacklist types, and strict bools."""
@@ -221,7 +224,10 @@ class DynamicTreesSyncTest(unittest.TestCase):
         self._replace_server_line("leavesSeedDropRate", "65.0")
         with self.assertRaises(ValueError) as ctx_seed_rate:
             self.sync.validate_configs()
-        self.assertIn("[seeds].leavesSeedDropRate invariant violation: must be a finite number in [0.0, 64.0]", str(ctx_seed_rate.exception))
+        self.assertIn(
+            "[seeds].leavesSeedDropRate invariant violation: must be a finite number in [0.0, 64.0]",
+            str(ctx_seed_rate.exception),
+        )
 
         # [seeds].timeToLive range (0..6000)
         self._server_path().write_text(original, encoding="utf-8")
@@ -235,14 +241,20 @@ class DynamicTreesSyncTest(unittest.TestCase):
         self._replace_server_line("swampOaksInWater", '"FLOATING"')
         with self.assertRaises(ValueError) as ctx_swamp:
             self.sync.validate_configs()
-        self.assertIn("[trees].swampOaksInWater invariant violation: must be one of {DISABLED, ROOTED, SUNK}", str(ctx_swamp.exception))
+        self.assertIn(
+            "[trees].swampOaksInWater invariant violation: must be one of {DISABLED, ROOTED, SUNK}",
+            str(ctx_swamp.exception),
+        )
 
         # [interaction].axeDamageMode enum
         self._server_path().write_text(original, encoding="utf-8")
         self._replace_server_line("axeDamageMode", '"DURABILITY"')
         with self.assertRaises(ValueError) as ctx_axe:
             self.sync.validate_configs()
-        self.assertIn("[interaction].axeDamageMode invariant violation: must be one of {THICKNESS, VANILLA, VOLUME}", str(ctx_axe.exception))
+        self.assertIn(
+            "[interaction].axeDamageMode invariant violation: must be one of {THICKNESS, VANILLA, VOLUME}",
+            str(ctx_axe.exception),
+        )
 
         # [world].dimensionsBlacklist list of non-empty strings
         for bad_list in ('"minecraft:the_nether"', "[123]", '[""]'):
@@ -250,7 +262,11 @@ class DynamicTreesSyncTest(unittest.TestCase):
             self._replace_server_line("dimensionsBlacklist", bad_list)
             with self.assertRaises(ValueError) as ctx_bl:
                 self.sync.validate_configs()
-            self.assertIn("[world].dimensionsBlacklist invariant violation: must be a list of non-empty dimension registry name strings", str(ctx_bl.exception))
+            self.assertIn(
+                "[world].dimensionsBlacklist invariant violation: "
+                "must be a list of non-empty dimension registry name strings",
+                str(ctx_bl.exception),
+            )
 
         # [debug].debug strict bool
         self._server_path().write_text(original, encoding="utf-8")

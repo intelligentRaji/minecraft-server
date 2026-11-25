@@ -52,7 +52,8 @@ FORBIDDEN_NAMES: frozenset[str] = frozenset({
     "mods",
 })
 
-FORBIDDEN_SUFFIXES: tuple[str, ...] = DEFAULT_FORBIDDEN_SUFFIXES + (
+FORBIDDEN_SUFFIXES: tuple[str, ...] = (
+    *DEFAULT_FORBIDDEN_SUFFIXES,
     ".nbt",
     ".dat",
     ".json",

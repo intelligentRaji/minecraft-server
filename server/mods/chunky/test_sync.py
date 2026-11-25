@@ -53,7 +53,7 @@ class ChunkySyncTest(unittest.TestCase):
         self.assertEqual(set(loaded.keys()), {"config.json"})
 
     def test_initial_placement_mode_preservation_and_idempotency(self) -> None:
-        """First run places config.json; second run is idempotent; updates preserve target file mode and leave tasks/ untouched."""
+        """First run places config.json, repeats cleanly, and preserves mode and tasks/."""
         tasks_dir = self.data_dir / "config" / "chunky" / "tasks" / "minecraft"
         tasks_dir.mkdir(parents=True, exist_ok=True)
         live_task = tasks_dir / "overworld.json"
@@ -102,7 +102,7 @@ class ChunkySyncTest(unittest.TestCase):
         self.assertEqual(list(self.data_dir.iterdir()), [])
 
     def test_forbidden_files_and_dirs_rejected(self) -> None:
-        """Forbidden runtime directories (tasks, logs, world) and archive/runtime suffixes must fail pre-flight validation."""
+        """Forbidden runtime dirs (tasks, logs, world) and archive/runtime suffixes fail validation."""
         for forbidden_dir in ("tasks", "logs", "world"):
             dpath = self.configs_dir / forbidden_dir
             dpath.mkdir()

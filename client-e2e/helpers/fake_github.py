@@ -9,7 +9,6 @@ import threading
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
 
 GITHUB_DEFAULT_REPO = "intelligentRaji/minecraft-server"
 GITHUB_RELEASE_TAG_PREFIX = "client-v"
@@ -77,10 +76,10 @@ class FakeGitHubReleasesServer:
         owner_server = self
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            def log_message(self, format: str, *args: object) -> None:
                 return
 
-            def do_GET(self) -> None:  # noqa: N802
+            def do_GET(self) -> None:
                 path = self.path.split("?", 1)[0]
                 user_agent = str(self.headers.get("User-Agent", "")).strip()
                 with owner_server._lock:
@@ -122,7 +121,7 @@ class FakeGitHubReleasesServer:
 
                 if path == owner_server.checksums_path:
                     digest = owner_server.checksum_override or owner_server.expected_sha256
-                    body = f"{digest}  {owner_server.asset_name}\n".encode("utf-8")
+                    body = f"{digest}  {owner_server.asset_name}\n".encode()
                     self.send_response(HTTPStatus.OK)
                     self.send_header("Content-Type", "text/plain; charset=utf-8")
                     self.send_header("Content-Length", str(len(body)))

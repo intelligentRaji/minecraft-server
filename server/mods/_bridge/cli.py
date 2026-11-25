@@ -5,12 +5,9 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable
-from typing import TypeVar
-
-T = TypeVar("T")
 
 
-def run_sync_cli(
+def run_sync_cli[T](
     slug: str,
     validate_fn: Callable[[], T],
     apply_fn: Callable[[T, bool], tuple[int, int]],

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
 
 MOD_DIR = Path(__file__).resolve().parent
 MODS_DIR = MOD_DIR.parent
@@ -62,7 +61,7 @@ VALID_PROPERTY_BOOLEANS: frozenset[str] = frozenset({
 })
 
 
-def validate_modernfix_common(data: Any) -> list[str]:
+def validate_modernfix_common(data: object) -> list[str]:
     """Validate architectural and operational invariants for `modernfix-common.toml`."""
     if not isinstance(data, dict):
         return [
